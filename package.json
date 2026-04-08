@@ -1,0 +1,14 @@
+{
+  "name": "omni-monorepo",
+  "version": "1.0.0",
+  "description": "Omni Integrated Discord Solution Monorepo",
+  "private": true,
+  "scripts": {
+    "dev:bot": "npm run dev --prefix omni-bot",
+    "dev:dashboard": "npm run dev --prefix omni-dashboard",
+    "dev": "npx concurrently \"npm run dev:bot\" \"npm run dev:dashboard\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
