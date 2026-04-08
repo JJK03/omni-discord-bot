@@ -29,6 +29,7 @@ yarn-error.log*
 
 # Agent specific
 AGENT_GIT_GUIDELINES.md
+internal_tests/
 .claude/
 .gemini/
 GEMINI.md
