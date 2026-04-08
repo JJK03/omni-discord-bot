@@ -32,7 +32,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ─────────────────────────────────────────
-// 클라이언트 생성
+// Client Initialization / 클라이언트 초기화
 // ─────────────────────────────────────────
 const client = new Client({
   intents: [
@@ -48,7 +48,7 @@ const client = new Client({
 client.commands = new Collection();
 
 // ─────────────────────────────────────────
-// omni: 서버별 기능 설정
+// Bot Feature Configurations / 봇 서버별 기능 설정
 // ─────────────────────────────────────────
 interface BotFeatures {
   kick: boolean;
@@ -276,7 +276,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // ─────────────────────────────────────────
-// 안전한 종료 (Graceful Shutdown)
+// Graceful Shutdown / 안전한 종료 절차
 // ─────────────────────────────────────────
 async function gracefulShutdown(signal: string) {
   console.log(`${signal} 수신: 봇 안전 종료 절차 시작...`);
