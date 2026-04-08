@@ -324,6 +324,7 @@ export class GuildQueue {
       }
 
       const ffmpeg = spawn(ffmpegPath, [
+        "-re", // 실시간 속도로 데이터 출력 (배속 방지 필수)
         "-reconnect",
         "1",
         "-reconnect_streamed",
