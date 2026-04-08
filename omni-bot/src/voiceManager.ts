@@ -12,12 +12,11 @@ import { VoiceChannel, StageChannel } from "discord.js";
 import { spawn, execFile } from "node:child_process";
 import { createRequire } from "node:module";
 
-// yt-dlp / ffmpeg 바이너리 경로
+import ffmpegPath from "ffmpeg-static";
+
+// yt-dlp 바이너리 경로
 const require = createRequire(import.meta.url);
 const YTDL_BIN = "yt-dlp"; // Homebrew로 설치된 시스템 yt-dlp 사용
-
-// ffmpeg 바이너리 경로 (Docker 내장 ffmpeg 사용)
-const ffmpegPath: string = "ffmpeg";
 
 export interface Track {
   title: string;
@@ -319,40 +318,43 @@ export class GuildQueue {
         throw new Error("스트리밍 URL을 가져올 수 없습니다.");
       }
 
-      // 2단계: ffmpeg 고성능 Zero-Stutter 파이프라인
-      // - s16le (Raw PCM) 출력으로 @discordjs/voice의 정밀 전송 제어(Pacing) 활용
-      // - -re 옵션으로 실시간 재생 속도 강제하여 네트워크 버퍼 비워짐 방지
+      // 2단계: ffmpeg 고성능 파이프라인
+      if (!ffmpegPath) {
+        throw new Error("FFmpeg 바이너리를 찾을 수 없습니다 (ffmpeg-static error).");
+      }
+
       const ffmpeg = spawn(ffmpegPath, [
-        "-re", // Real-time: 실제 노래 속도에 맞춰 데이터 출력 (끊김 방지 핵심)
+        "-re", // 실시간 속도로 데이터 출력 (배속 방지 필수)
         "-reconnect",
         "1",
         "-reconnect_streamed",
         "1",
         "-reconnect_delay_max",
-        "2",
+        "5",
         "-reconnect_at_eof",
         "1",
         "-i",
         streamUrl,
+        "-vn", // 비디오 스트림 무시
+        "-sn", // 자막 스트림 무시
+        "-dn", // 데이터 스트림 무시
         "-analyzeduration",
-        "0",
+        "1000000", // 1초간 분석 (더 정확한 포맷 탐지)
         "-probesize",
-        "32768",
+        "1000000",
         "-loglevel",
-        "info", // 로깅 레벨 상향 (speed 등 정보 획득을 위해)
-        "-stats", // 통계 데이터(speed) 강제 출력
+        "info",
+        "-stats",
         "-f",
-        "s16le", // Raw PCM 포맷으로 변경
+        "s16le",
         "-ar",
         "48000",
         "-ac",
         "2",
         "-af",
         "volume=0.5",
-        "-threads",
-        "1", // CPU 스케줄링 흔들림 최소화
         "pipe:1",
-      ]) as any; // Type workaround for child_process union type issue
+      ]) as any;
       this._ffmpegProcess = ffmpeg;
 
       // 에러 및 성능 모니터링 로깅
