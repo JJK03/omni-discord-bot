@@ -92,6 +92,14 @@ Before setting up Omni, ensure you have the following installed:
 - **Graceful Shutdown**: The bot is configured to handle `SIGTERM` and `SIGINT` signals to ensure all voice connections are closed and temporary resources are cleaned up before exit.
 - **Permission Validation**: All moderation commands include dual-layer validation (Discord API level and application logic level).
 
+## Quality Assurance
+
+Omni follows strict software quality standards:
+- **Automated Testing**: Comprehensive unit and integration tests using `Vitest`.
+- **Stability Benchmarking**: Real-time throughput monitoring for audio streams to prevent speed drift.
+- **ISTQB Alignment**: Testing methodologies aligned with international software testing standards.
+- **AI Development Harness**: Standardized guidelines for AI agents to ensure consistent code quality and security.
+
 ## License
 
 This project is licensed under the ISC License.
