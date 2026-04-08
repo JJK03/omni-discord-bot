@@ -89,6 +89,8 @@ Before setting up Omni, ensure you have the following installed:
 ## Security and Best Practices
 
 - **Environment Variables**: Never commit `.env` files to source control. Ensure they are added to your `.gitignore`.
+- **Docker Security**: A `.dockerignore` file is implemented to ensure only necessary source files are included in the build, preventing sensitive local data and incompatible binaries from entering the container.
+- **Cross-Platform Compatibility**: The system intelligently resolves binary paths (FFmpeg), favoring system-installed versions in production (Docker) and providing automated fallbacks for local development.
 - **Graceful Shutdown**: The bot is configured to handle `SIGTERM` and `SIGINT` signals to ensure all voice connections are closed and temporary resources are cleaned up before exit.
 - **Permission Validation**: All moderation commands include dual-layer validation (Discord API level and application logic level).
 
