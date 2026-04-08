@@ -1,0 +1,7 @@
+node_modules
+.env
+internal_tests
+AGENT_GIT_GUIDELINES.md
+*.log
+dist
+build

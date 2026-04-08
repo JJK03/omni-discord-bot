@@ -12,7 +12,10 @@ import { VoiceChannel, StageChannel } from "discord.js";
 import { spawn, execFile } from "node:child_process";
 import { createRequire } from "node:module";
 
-import ffmpegPath from "ffmpeg-static";
+import staticFfmpegPath from "ffmpeg-static";
+
+// FFmpeg 바이너리 경로 결정 (도커 시스템 ffmpeg 우선, 로컬 fallback)
+const ffmpegPath: string = "ffmpeg"; // 기본은 시스템 경로 사용 (Docker 대응)
 
 // yt-dlp 바이너리 경로
 const require = createRequire(import.meta.url);
@@ -239,6 +242,16 @@ export class GuildQueue {
   }
 
   /**
+   * 시스템에 특정 명령어가 존재하는지 확인합니다.
+   */
+  private async _isCommandExists(command: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const check = spawn("which", [command]);
+      check.on("close", (code) => resolve(code === 0));
+    });
+  }
+
+  /**
    * 오디오 재생을 완전히 종료하고 커넥션을 초기화합니다.
    */
   public async destroy() {
@@ -319,11 +332,14 @@ export class GuildQueue {
       }
 
       // 2단계: ffmpeg 고성능 파이프라인
-      if (!ffmpegPath) {
-        throw new Error("FFmpeg 바이너리를 찾을 수 없습니다 (ffmpeg-static error).");
+      // 시스템 ffmpeg가 없으면 static 경로 사용
+      const finalFfmpegPath = ffmpegPath === "ffmpeg" ? (await this._isCommandExists("ffmpeg") ? "ffmpeg" : staticFfmpegPath) : ffmpegPath;
+
+      if (!finalFfmpegPath) {
+        throw new Error("FFmpeg 바이너리를 찾을 수 없습니다.");
       }
 
-      const ffmpeg = spawn(ffmpegPath, [
+      const ffmpeg = spawn(finalFfmpegPath, [
         "-re", // 실시간 속도로 데이터 출력 (배속 방지 필수)
         "-reconnect",
         "1",
@@ -357,16 +373,18 @@ export class GuildQueue {
       ]) as any;
       this._ffmpegProcess = ffmpeg;
 
-      // 에러 및 성능 모니터링 로깅
-      ffmpeg.on("error", (err: any) =>
-        console.error(
-          "[Audio:Error] FFmpeg 프로세스 치명적 에러:",
-          err.message,
-        ),
-      );
+      ffmpeg.on("close", (code: number) => {
+        if (code !== 0 && code !== null) {
+          console.error(`[Audio:Error] FFmpeg 프로세스가 종료되었습니다. (종료 코드: ${code})`);
+        }
+      });
 
       ffmpeg.stderr.on("data", (data: Buffer) => {
         const line = data.toString();
+        // 모든 stderr 출력 (로그 양이 많아질 수 있으나 디버깅을 위해 일시 허용)
+        if (line.includes("Error") || line.includes("failed")) {
+          console.error(`[Audio:FFmpeg-Stderr] ${line.trim()}`);
+        }
 
         // 비정상(speed < 1.0x) 시에만 경고 로그 출력
         // 일시정지 상태일 때는 출력이 멈추므로 경고를 무시합니다.
