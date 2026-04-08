@@ -27,7 +27,15 @@ yarn-debug.log*
 yarn-error.log*
 *.log
 
-# Editor & OS directories and files
+# Agent specific
+AGENT_GIT_GUIDELINES.md
+.claude/
+.gemini/
+GEMINI.md
+CHANGELOG.md
+
+# Editor & OS
+ directories and files
 .DS_Store
 .idea/
 .vscode/
