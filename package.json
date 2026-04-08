@@ -6,7 +6,8 @@
   "scripts": {
     "dev:bot": "npm run dev --prefix omni-bot",
     "dev:dashboard": "npm run dev --prefix omni-dashboard",
-    "dev": "npx concurrently \"npm run dev:bot\" \"npm run dev:dashboard\""
+    "dev": "npx concurrently \"npm run dev:bot\" \"npm run dev:dashboard\"",
+    "test:internal": "npx tsx internal_tests/index.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
