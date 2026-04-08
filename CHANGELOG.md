@@ -1,35 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+본 문서에는 프로젝트의 모든 주요 변경 사항이 기록됩니다.
 
 ## [1.0.2] - 2026-04-08
-### Added
-- Added `.dockerignore` to prevent local `node_modules` and sensitive files from being copied into containers.
-- Enhanced FFmpeg debugging with detailed exit code and stderr logging in Docker logs.
+### Added / 추가
+- Added `.dockerignore` for container optimization / 컨테이너 최적화를 위한 `.dockerignore` 추가.
+- Enhanced FFmpeg debugging logs / FFmpeg 디버깅 로그 강화.
 
-### Changed
-- Improved FFmpeg path resolution: Prefer system-installed FFmpeg (Docker) with fallback to `ffmpeg-static` (Local).
-- Optimized voice manager stability for cross-platform (Darwin/Linux) compatibility.
+### Fixed / 수정
+- Resolved Docker FFmpeg compatibility / 도커 FFmpeg 호환성 문제 해결.
+- Fixed stream termination issues / 스트림 조기 종료 버그 수정.
 
-### Fixed
-- Resolved FFmpeg `spawn ENOENT` errors in Docker environments caused by architecture-mismatched binaries.
-- Fixed immediate stream termination issues in containerized environments.
+## [1.0.1] - 2026-04-08 [YANKED - AUDIO BUG]
+> **Warning**: This version has critical audio bugs. v1.0.2 이상을 사용하세요.
 
-## [1.0.1] - 2026-04-08 [YANKED - CRITICAL AUDIO BUG]
-> **Warning**: This version contains a critical bug where audio playback fails in Docker environments due to architecture mismatch and missing `-re` flags. Please use v1.0.2 instead.
+### Added / 추가
+- Automated testing with Vitest / Vitest 기반 자동화 테스트 도입.
+- ISTQB-aligned test suites / ISTQB 표준 준수 테스트 스위트.
+- AI Agent Development Harness / AI 에이전트 협업 가이드라인.
 
-### Added
-- Automated testing infrastructure using `Vitest`.
-- ISTQB-aligned test suites for moderation, voice, and firebase services.
-- AI Agent Development Harness for standardized team collaboration.
-
-## [1.0.0] - 2026-04-08 [DEPRECATED - AUDIO BUG]
-> **Notice**: Initial release version. Audio streaming logic is unstable and may experience speed drift.
-
-### Added
-- Initial release of Omni Bot and Dashboard.
-- High-performance music streaming using `yt-dlp` and `ffmpeg`.
-- Discord bot dashboard with real-time Firestore integration.
+## [1.0.0] - 2026-04-08 [DEPRECATED]
+- Initial release / 초기 릴리즈 버전.

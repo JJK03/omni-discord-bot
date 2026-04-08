@@ -1,107 +1,51 @@
-# Omni - Integrated Discord Management Solution
+# Omni - Professional Discord Bot Ecosystem
 
-Omni is a comprehensive, multi-purpose Discord bot and web dashboard system designed for advanced server management and community engagement. This monorepo contains both the backend bot service (`omni-bot`) and the frontend management interface (`omni-dashboard`).
+[English](#english) | [한국어](#한국어)
 
-## Project Architecture
+---
 
-The project is structured as a monorepo:
-- **omni-bot**: A TypeScript-based Discord bot utilizing `discord.js` and `Firebase Admin SDK`.
-- **omni-dashboard**: A React-based web application built with `Vite` and `Tailwind CSS` for real-time bot configuration.
+<a name="english"></a>
+## English
 
-## Key Features
+Omni is a high-performance, modular Discord solution featuring a real-time Firestore-backed React dashboard and automated QA infrastructure.
 
-### Music and Entertainment
-- High-performance YouTube streaming via `yt-dlp` and `ffmpeg`.
-- Interactive music control panel with dynamic status updates.
-- Automated resource cleanup and auto-exit when voice channels are empty.
+### Project Architecture
+- **omni-bot**: TypeScript-based Discord bot utilizing `discord.js`.
+- **omni-dashboard**: React-based management interface built with `Vite` and `Tailwind CSS`.
 
-### Server Moderation and Management
-- **Temporary Channels**: Creation of voice channels that automatically delete after a set duration.
-- **Temporary Nicknames**: Time-limited nickname changes with automatic reversion.
-- **Moderation Tools**: Streamlined kick, ban, and bulk message deletion (clean) commands with permission validation.
+### Key Features
+- **High-Fidelity Music**: Optimized streaming via FFmpeg with speed drift protection.
+- **Server Utilities**: Temporary channels, time-limited nicknames, and automated moderation.
+- **Community Engagement**: Anonymous messaging (Bamboo Forest) and approval-based role management.
 
-### Community Engagement
-- **Anonymous Messaging**: A "Bamboo Forest" style system for anonymous user interactions.
-- **Role Management**: Automated role assignment system with optional administrator approval workflows.
-- **Member Notifications**: Customizable welcome and leave messages with dynamic image generation.
+---
 
-## Prerequisites
+<a name="한국어"></a>
+## 한국어
 
-Before setting up Omni, ensure you have the following installed:
-- Node.js (v18 or higher)
-- npm or yarn
-- FFmpeg (required for music streaming)
-- yt-dlp (required for music streaming)
-- A Firebase Project (Firestore enabled)
-- A Discord Application (Bot token and Client ID)
+Omni는 실시간 Firestore 연동 React 대시보드와 자동화된 QA 인프라를 갖춘 고성능 모듈형 디스코드 봇 솔루션입니다.
 
-## Setup Instructions
+### 프로젝트 아키텍처
+- **omni-bot**: `discord.js` 기반의 TypeScript 디스코드 봇.
+- **omni-dashboard**: `Vite`와 `Tailwind CSS`로 구축된 현대적인 React 관리 인터페이스.
 
-### 1. Bot Configuration (omni-bot)
+### 주요 기능
+- **고음질 음악 스트리밍**: FFmpeg 최적화 및 배속 방지 로직이 적용된 안정적인 재생.
+- **서버 관리 도구**: 자동 삭제 임시 채널, 기간제 닉네임 변경 및 강화된 보안 명령행.
+- **커뮤니티 활성화**: 익명 소통방(대나무숲) 및 관리자 승인 기반 역할 부여 시스템.
 
-1. Navigate to the bot directory:
-   ```bash
-   cd omni-bot
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file based on `.env.example`:
-   ```env
-   DISCORD_TOKEN=<YOUR_BOT_TOKEN>
-   DISCORD_CLIENT_ID=<YOUR_CLIENT_ID>
-   # Add Firebase Admin credentials or configuration paths as needed
-   ```
-4. Deploy slash commands to Discord:
-   ```bash
-   npm run deploy-commands
-   ```
-5. Start the bot:
-   ```bash
-   npm run dev
-   ```
+## Prerequisites / 요구 사항
+- Node.js (v18+)
+- FFmpeg & yt-dlp
+- Firebase Project & Discord Bot Token
 
-### 2. Dashboard Configuration (omni-dashboard)
+## Setup / 설치 방법
+Detailed instructions are provided in the [English Setup Section](#english).
+상세 설치 방법은 영문 섹션을 참고해 주세요.
 
-1. Navigate to the dashboard directory:
-   ```bash
-   cd omni-dashboard
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Create a `.env` file with your Firebase client configuration:
-   ```env
-   VITE_FIREBASE_API_KEY=<API_KEY>
-   VITE_FIREBASE_AUTH_DOMAIN=<AUTH_DOMAIN>
-   VITE_FIREBASE_PROJECT_ID=<PROJECT_ID>
-   VITE_FIREBASE_STORAGE_BUCKET=<STORAGE_BUCKET>
-   VITE_FIREBASE_MESSAGING_SENDER_ID=<SENDER_ID>
-   VITE_FIREBASE_APP_ID=<APP_ID>
-   ```
-4. Run the development server:
-   ```bash
-   npm run dev
-   ```
-
-## Security and Best Practices
-
-- **Environment Variables**: Never commit `.env` files to source control. Ensure they are added to your `.gitignore`.
-- **Docker Security**: A `.dockerignore` file is implemented to ensure only necessary source files are included in the build, preventing sensitive local data and incompatible binaries from entering the container.
-- **Cross-Platform Compatibility**: The system intelligently resolves binary paths (FFmpeg), favoring system-installed versions in production (Docker) and providing automated fallbacks for local development.
-- **Graceful Shutdown**: The bot is configured to handle `SIGTERM` and `SIGINT` signals to ensure all voice connections are closed and temporary resources are cleaned up before exit.
-- **Permission Validation**: All moderation commands include dual-layer validation (Discord API level and application logic level).
-
-## Quality Assurance
-
-Omni follows strict software quality standards:
-- **Automated Testing**: Comprehensive unit and integration tests using `Vitest`.
-- **Stability Benchmarking**: Real-time throughput monitoring for audio streams to prevent speed drift.
-- **ISTQB Alignment**: Testing methodologies aligned with international software testing standards.
-- **AI Development Harness**: Standardized guidelines for AI agents to ensure consistent code quality and security.
+## Quality Assurance / 품질 보증
+Omni follows ISTQB-aligned testing methodologies with **Vitest**.
+Omni는 Vitest를 활용하여 ISTQB 표준을 준수하는 엄격한 자동화 테스트를 수행합니다.
 
 ## License
-
-This project is licensed under the ISC License.
+ISC License

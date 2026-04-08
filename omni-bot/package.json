@@ -1,7 +1,7 @@
 {
   "name": "omni-bot",
   "version": "1.0.0",
-  "description": "Powerful & Modular Multi-purpose Discord Bot for Communities",
+  "description": "Powerful & Modular Multi-purpose Discord Bot - Core Engine of the Omni Ecosystem",
   "main": "src/index.ts",
   "scripts": {
     "start": "tsx src/index.ts",
