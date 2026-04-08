@@ -49,11 +49,13 @@
 1.  `git checkout develop`
 2.  `git pull origin develop`
 3.  `git checkout -b release/vX.X.X`
-4.  `CHANGELOG.md` 업데이트 및 버전 정보 수정 (`package.json`).
-5.  `git commit -m "release: vX.X.X"`
-6.  `git checkout main` -> `git merge release/vX.X.X` -> `git tag vX.X.X`
-7.  `git push origin main --tags`
-8.  `git checkout develop` -> `git merge main` (동기화)
+4.  **필수 문서 업데이트**: 
+    - `CHANGELOG.md`: 새로운 버전 항목을 추가하고 Added/Changed/Fixed 내역을 상세히 기록하십시오.
+    - `README.md`: 신규 기능에 따른 설치법이나 QA 지표가 바뀌었다면 반영하십시오.
+5.  버전 정보 수정 (`package.json`) 및 `git commit -m "release: vX.X.X"`.
+6.  `git checkout main` -> `git merge release/vX.X.X` -> `git tag vX.X.X`.
+7.  `git push origin main --tags`.
+8.  `git checkout develop` -> `git merge main` (동기화).
 
 ---
 
@@ -61,6 +63,7 @@
 
 - **Force Push 금지**: `main`, `develop` 브랜치에 대한 강제 푸시 절대 금지.
 - **Secret 관리**: `.env`, `key.json`, `.pem` 파일은 절대 커밋 금지.
+- **문서화 누락 금지**: 모든 릴리즈(release) 및 주요 기능 추가(feat) 시 관련 문서(`CHANGELOG.md`, `README.md`) 수정을 생략하지 마십시오.
 - **검증 필수**: 푸시 전 반드시 `npm run dev` 등으로 실행 여부 확인.
 
 ## 🧪 6. 자동화 테스트 하네스 (Automated Testing)
