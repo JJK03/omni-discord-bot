@@ -12,12 +12,11 @@ import { VoiceChannel, StageChannel } from "discord.js";
 import { spawn, execFile } from "node:child_process";
 import { createRequire } from "node:module";
 
-// yt-dlp / ffmpeg 바이너리 경로
+import ffmpegPath from "ffmpeg-static";
+
+// yt-dlp 바이너리 경로
 const require = createRequire(import.meta.url);
 const YTDL_BIN = "yt-dlp"; // Homebrew로 설치된 시스템 yt-dlp 사용
-
-// ffmpeg 바이너리 경로 (Docker 내장 ffmpeg 사용)
-const ffmpegPath: string = "ffmpeg";
 
 export interface Track {
   title: string;
@@ -320,8 +319,10 @@ export class GuildQueue {
       }
 
       // 2단계: ffmpeg 고성능 파이프라인
-      // - -re 옵션은 네트워크 스트림에서 오히려 타이밍 불일치(배속/느려짐)를 유발할 수 있어 제거합니다.
-      // - discord.js/voice의 정밀한 Pacing 기능을 활용하기 위해 s16le 포맷을 유지합니다.
+      if (!ffmpegPath) {
+        throw new Error("FFmpeg 바이너리를 찾을 수 없습니다 (ffmpeg-static error).");
+      }
+
       const ffmpeg = spawn(ffmpegPath, [
         "-reconnect",
         "1",
