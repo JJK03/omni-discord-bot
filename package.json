@@ -9,7 +9,10 @@
     "dev": "npx concurrently \"npm run dev:bot\" \"npm run dev:dashboard\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage", 
+    "setup": "node scripts/wizard.mjs",
+    "deploy": "./deploy-all.sh",
+    "setup-all": "npm run setup && npm run deploy"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.3",
