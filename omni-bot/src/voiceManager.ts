@@ -27,12 +27,16 @@ export interface Track {
   requestedBy: string;
 }
 
+export type RepeatMode = "off" | "one" | "all";
+
 export class GuildQueue {
   public guildId: string;
   public connection: VoiceConnection | null = null;
   public player: AudioPlayer;
   public tracks: Track[] = [];
   public currentTrack: Track | null = null;
+  public repeatMode: RepeatMode = "off";
+  public shuffle: boolean = false;
   // 트랙 시작/종료 시 외부 콜백 (임베드 업데이트용)
   public onTrackStart: ((track: Track) => void) | null = null;
   public onQueueEnd: (() => void) | null = null;
@@ -61,8 +65,21 @@ export class GuildQueue {
 
     // 음악이 끝나면 다음 곡 재생
     this.player.on(AudioPlayerStatus.Idle, () => {
-      this.currentTrack = null;
+      const finishedTrack = this.currentTrack;
       this._killChildProcesses();
+
+      if (finishedTrack) {
+        if (this.repeatMode === "one") {
+          // 현재 곡 반복: 대기열 맨 앞에 다시 추가
+          this.tracks.unshift(finishedTrack);
+        } else if (this.repeatMode === "all") {
+          // 전체 반복: 대기열 맨 뒤에 다시 추가
+          this.tracks.push(finishedTrack);
+        }
+      }
+
+      this.currentTrack = null;
+
       if (this.tracks.length === 0) {
         this.onQueueEnd?.();
         // 대기열이 비었으므로 자동 퇴장 타이머 시작
@@ -321,7 +338,13 @@ export class GuildQueue {
     // 이전 프로세스 정리
     this._killChildProcesses();
 
-    const track = this.tracks.shift()!;
+    let track: Track;
+    if (this.shuffle && this.tracks.length > 0) {
+      const randomIndex = Math.floor(Math.random() * this.tracks.length);
+      track = this.tracks.splice(randomIndex, 1)[0]!;
+    } else {
+      track = this.tracks.shift()!;
+    }
     this.currentTrack = track;
 
     try {
@@ -333,7 +356,9 @@ export class GuildQueue {
 
       // 2단계: ffmpeg 고성능 파이프라인
       // 시스템 ffmpeg가 없으면 static 경로 사용
-      const finalFfmpegPath = ffmpegPath === "ffmpeg" ? (await this._isCommandExists("ffmpeg") ? "ffmpeg" : staticFfmpegPath) : ffmpegPath;
+      const finalFfmpegPath: string | null = ffmpegPath === "ffmpeg" 
+        ? (await this._isCommandExists("ffmpeg") ? "ffmpeg" : (staticFfmpegPath as unknown as string)) 
+        : ffmpegPath;
 
       if (!finalFfmpegPath) {
         throw new Error("FFmpeg 바이너리를 찾을 수 없습니다.");

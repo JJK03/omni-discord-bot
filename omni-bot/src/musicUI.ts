@@ -27,13 +27,16 @@ function createMusicEmbed(queue: GuildQueue): EmbedBuilder {
     .setColor(COLORS.PRIMARY)
     .setTitle("🎵 음악 플레이어");
 
+  const repeatLabels = { off: "끄기", one: "한 곡", all: "전체" };
+  const statusText = `반복: **${repeatLabels[queue.repeatMode]}** | 셔플: **${queue.shuffle ? "켜짐" : "꺼짐"}**`;
+
   if (queue.currentTrack) {
     embed.addFields({
       name: "▶️ 현재 재생 중",
-      value: `**${queue.currentTrack.title}**\n요청: ${queue.currentTrack.requestedBy}`,
+      value: `**${queue.currentTrack.title}**\n요청: ${queue.currentTrack.requestedBy}\n${statusText}`,
     });
   } else {
-    embed.setDescription("재생 중인 곡이 없습니다.");
+    embed.setDescription(`재생 중인 곡이 없습니다.\n${statusText}`);
   }
 
   if (queue.tracks.length > 0) {
@@ -64,10 +67,10 @@ function createMusicEmbed(queue: GuildQueue): EmbedBuilder {
  */
 function createMusicButtons(
   queue: GuildQueue,
-): ActionRowBuilder<ButtonBuilder> {
+): ActionRowBuilder<ButtonBuilder>[] {
   const isPaused = queue.player.state.status === AudioPlayerStatus.Paused;
 
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("music_pause_resume")
       .setLabel(isPaused ? "재개" : "일시정지")
@@ -84,6 +87,27 @@ function createMusicButtons(
       .setEmoji("⏹️")
       .setStyle(ButtonStyle.Danger),
   );
+
+  const repeatEmojis = { off: "🔁", one: "🔂", all: "🔁" };
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("music_repeat")
+      .setLabel(`반복: ${queue.repeatMode === "off" ? "끄기" : queue.repeatMode === "one" ? "한 곡" : "전체"}`)
+      .setEmoji(repeatEmojis[queue.repeatMode])
+      .setStyle(queue.repeatMode === "off" ? ButtonStyle.Secondary : ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("music_shuffle")
+      .setLabel(`셔플: ${queue.shuffle ? "켜짐" : "꺼짐"}`)
+      .setEmoji("🔀")
+      .setStyle(queue.shuffle ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId("music_delete")
+      .setLabel("곡 삭제")
+      .setEmoji("🗑️")
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return [row1, row2];
 }
 
 /**
@@ -116,8 +140,8 @@ export async function sendOrUpdateMusicPanel(
   queue: GuildQueue,
 ): Promise<void> {
   const embed = createMusicEmbed(queue);
-  const buttons = createMusicButtons(queue);
-  const components: any[] = [buttons];
+  const buttonRows = createMusicButtons(queue);
+  const components: any[] = [...buttonRows];
 
   const existing = musicMessages.get(queue.guildId);
 
@@ -215,6 +239,20 @@ export async function handleMusicButton(
       await deleteMusicPanel(channel, queue.guildId);
       queue.destroy();
       removeQueue();
+      break;
+    }
+    case "music_repeat": {
+      const modes: ("off" | "one" | "all")[] = ["off", "one", "all"];
+      const currentIndex = modes.indexOf(queue.repeatMode);
+      queue.repeatMode = modes[(currentIndex + 1) % modes.length]!;
+      await safeDefer();
+      await sendOrUpdateMusicPanel(channel, queue);
+      break;
+    }
+    case "music_shuffle": {
+      queue.shuffle = !queue.shuffle;
+      await safeDefer();
+      await sendOrUpdateMusicPanel(channel, queue);
       break;
     }
     case "music_delete": {
