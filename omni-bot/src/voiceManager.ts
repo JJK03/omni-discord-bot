@@ -53,7 +53,19 @@ export class GuildQueue {
 
   constructor(guildId: string) {
     this.guildId = guildId;
-    this.player = createAudioPlayer();
+    this.player = createAudioPlayer({
+      behaviors: {
+        // reconnect(TLS 재연결 등) 중 프레임 공백을 허용 (5초 = 20ms × 250)
+        maxMissedFrames: 250,
+      },
+    });
+
+    // 플레이어 상태 전환 추적 (reconnect → Idle 버그 진단용)
+    this.player.on("stateChange", (oldState, newState) => {
+      if (newState.status === AudioPlayerStatus.Idle && oldState.status !== AudioPlayerStatus.Idle) {
+        console.log(`[Audio:State] ${oldState.status} → ${newState.status} (곡: ${this.currentTrack?.title ?? "없음"})`);
+      }
+    });
 
     // 플레이어 에러 핸들링
     this.player.on("error", (error) => {
