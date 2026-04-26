@@ -224,6 +224,10 @@ export async function handleMusicButton(
     }
     case "music_skip": {
       if (queue.currentTrack) {
+        const skipper = interaction.member && "displayName" in interaction.member
+          ? interaction.member.displayName
+          : interaction.user.username;
+        console.log(`[Audio:Skip] ${skipper}: 스킵 (${queue.currentTrack.title})`);
         queue.player.stop(); // Idle 이벤트가 발생하여 playNext 호출
         await safeDefer();
       } else {

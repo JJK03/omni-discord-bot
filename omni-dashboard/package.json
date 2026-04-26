@@ -1,7 +1,7 @@
 {
   "name": "omni-dashboard",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Modern React-based Management Interface for the Omni Discord Bot Ecosystem",
   "type": "module",
   "scripts": {
