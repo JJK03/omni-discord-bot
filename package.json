@@ -1,6 +1,6 @@
 {
   "name": "omni-monorepo",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "Professional multi-purpose Discord bot ecosystem featuring real-time Firestore synchronization and a modern React management interface.",
   "private": true,
   "scripts": {
