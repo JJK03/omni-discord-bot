@@ -206,10 +206,19 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[omni-bot] 준비 완료! 로그인 계정: ${c.user.tag}`);
   globalVoiceManager.setClient(c);
 
-  // 1분마다 임시 채널/닉네임 정리 (setInterval 사용)
-  setInterval(() => {
-    checkAndRemoveExpiredChannels();
-    checkAndRestoreExpiredNicknames();
+  // 1분마다 임시 채널/닉네임 정리 — 실행 중 겹침 방지
+  let schedulerRunning = false;
+  setInterval(async () => {
+    if (schedulerRunning) return;
+    schedulerRunning = true;
+    try {
+      await Promise.all([
+        checkAndRemoveExpiredChannels(),
+        checkAndRestoreExpiredNicknames(),
+      ]);
+    } finally {
+      schedulerRunning = false;
+    }
   }, DELAYS.SCHEDULE_INTERVAL);
 
   // 모든 서버 등록 및 리스너 시작 (Staggering 적용)

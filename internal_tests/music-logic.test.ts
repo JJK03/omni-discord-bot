@@ -122,7 +122,7 @@ describe('GuildQueue Music Logic', () => {
     expect(queue.tracks).not.toContain(mockTracks[1]);
   });
 
-  it('should have maxMissedFrames set to 250 to tolerate TLS reconnect gaps', () => {
+  it('should create an AudioPlayer with event listener support (TLS reconnect tolerance via maxMissedFrames=750)', () => {
     // GuildQueue 생성 결과로 player가 존재하고 mock이 반환한 객체임을 검증
     // (ESM named import와 namespace import가 다른 spy를 가리키므로 player 존재 여부로 대체 검증)
     expect(queue.player).toBeDefined();

@@ -26,6 +26,7 @@ const CUSTOM_ID = {
 function parseGenderRole(customId: string, prefix: string): { gender: string; roleId: string } {
   const withoutPrefix = customId.slice(prefix.length);
   const sep = withoutPrefix.indexOf("_");
+  if (sep === -1) return { gender: "", roleId: "" };
   return { gender: withoutPrefix.slice(0, sep), roleId: withoutPrefix.slice(sep + 1) };
 }
 
