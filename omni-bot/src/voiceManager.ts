@@ -56,8 +56,8 @@ export class GuildQueue {
     this.guildId = guildId;
     this.player = createAudioPlayer({
       behaviors: {
-        // reconnect(TLS 재연결 등) 중 프레임 공백을 허용 (5초 = 20ms × 250)
-        maxMissedFrames: 250,
+        // TLS 재연결 최대 10초 허용 (20ms × 500)
+        maxMissedFrames: 500,
       },
     });
 
@@ -386,7 +386,7 @@ export class GuildQueue {
         "-reconnect_streamed",
         "1",
         "-reconnect_delay_max",
-        "5",
+        "10",
         "-reconnect_at_eof",
         "1",
         "-i",
@@ -437,7 +437,7 @@ export class GuildQueue {
           const speedMatch = line.match(/speed=\s*([0-9.]+)x/);
           if (speedMatch && speedMatch[1]) {
             const speed = parseFloat(speedMatch[1]);
-            if (!isNaN(speed) && speed < 1.0) {
+            if (!isNaN(speed) && speed < 0.95) {
               console.warn(
                 `[Audio:Warning] 서버 성능 저하 감지 (${speed}x) - 버퍼링 가능성 높음`,
               );
@@ -693,7 +693,7 @@ export async function resolveAppleMusicPlaylist(
     return null;
   }
 
-  const html = await new Promise<string | null>((resolve) => {
+  const fetchHtml = () => new Promise<string | null>((resolve) => {
     const req = https.get(
       appleUrl,
       {
@@ -714,6 +714,12 @@ export async function resolveAppleMusicPlaylist(
     req.setTimeout(20000, () => { req.destroy(); resolve(null); });
   });
 
+  let html = await fetchHtml();
+  if (!html) {
+    console.warn("[AppleMusic] 첫 번째 fetch 실패, 3초 후 재시도...");
+    await new Promise((r) => setTimeout(r, 3000));
+    html = await fetchHtml();
+  }
   if (!html) {
     console.error("[AppleMusic] 플레이리스트 페이지를 가져오지 못했습니다.");
     return null;
