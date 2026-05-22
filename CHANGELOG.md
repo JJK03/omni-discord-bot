@@ -1,3 +1,19 @@
+## [v1.1.0] - 2026-05-22
+
+### Features
+- feat: Apple Music 링크로 노래 재생 지원
+
+### Bug Fixes
+- fix: 테스트 버그 수정 및 오디오 안정성 강화
+- fix: 네트워크/검색 타임아웃 및 에러 방어 강화
+- fix: 플레이리스트 백그라운드 배치 추가 시 트랙 누락 문제 수정
+- fix: Broken pipe FFmpeg 에러 로그 억제
+- fix: resolve intermittent track skip caused by TLS reconnect timeout
+
+### Documentation
+- docs: 앱 아이콘 및 대시보드 스크린샷 추가
+- docs: README를 MonitorControl 스타일로 전면 개편
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
