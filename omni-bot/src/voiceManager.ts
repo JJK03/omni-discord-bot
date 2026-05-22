@@ -58,6 +58,8 @@ export class GuildQueue {
   private _ffmpegProcess: ReturnType<typeof spawn> | null = null;
   // 현재 재생 중인 임시 오디오 파일 경로
   private _currentTmpFile: string | null = null;
+  // 다음 곡 prefetch 캐시 (url → 다운로드된 임시 파일 경로)
+  private _prefetchCache: Map<string, Promise<string | null>> = new Map();
 
   // 자동 퇴장용 타이머
   private _disconnectTimeout: NodeJS.Timeout | null = null;
@@ -78,12 +80,12 @@ export class GuildQueue {
       }
     });
 
-    // 플레이어 에러 핸들링
+    // 플레이어 에러 핸들링 — playNext는 호출하지 않음
+    // error 직후 AudioPlayer가 자동으로 Idle로 전이 → Idle 핸들러에서 playNext 처리
     this.player.on("error", (error) => {
       console.error(
         `오디오 에러: ${error.message} (리소스: ${(error.resource as any)?.metadata?.title})`,
       );
-      this.playNext();
     });
 
     // 음악이 끝나면 다음 곡 재생
@@ -159,6 +161,7 @@ export class GuildQueue {
 
   /**
    * 현재 실행 중인 자식 프로세스와 임시 파일을 안전하게 정리합니다.
+   * prefetchCache는 건드리지 않음 — 진행 중인 prefetch는 playNext에서 재사용.
    */
   private _killChildProcesses() {
     if (this._ffmpegProcess) {
@@ -173,6 +176,32 @@ export class GuildQueue {
       try { fs.unlinkSync(this._currentTmpFile); } catch {}
       this._currentTmpFile = null;
     }
+  }
+
+  /**
+   * prefetch 캐시를 비우고 대기 중인 임시 파일도 모두 삭제합니다.
+   * destroy() 또는 큐 초기화 시 호출.
+   */
+  private async _clearPrefetchCache() {
+    for (const [url, promise] of this._prefetchCache) {
+      const tmpFile = await promise.catch(() => null);
+      if (tmpFile) {
+        try { fs.unlinkSync(tmpFile); } catch {}
+      }
+    }
+    this._prefetchCache.clear();
+  }
+
+  /**
+   * 다음 곡을 백그라운드에서 미리 다운로드합니다.
+   * shuffle/repeat-one에서는 실행 안 함 (다음 곡이 불확정 또는 동일).
+   */
+  private _prefetchNext() {
+    if (this.shuffle || this.repeatMode === "one") return;
+    const next = this.tracks[0];
+    if (!next || this._prefetchCache.has(next.url)) return;
+    console.log(`[Audio:Prefetch] 다음 곡 미리 다운로드 시작: ${next.title}`);
+    this._prefetchCache.set(next.url, this._downloadToTmp(next.url));
   }
 
   /**
@@ -280,6 +309,7 @@ export class GuildQueue {
     this.tracks = [];
     this.currentTrack = null;
     this._killChildProcesses();
+    void this._clearPrefetchCache();
     this.player.stop();
     if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
       this.connection.destroy();
@@ -331,6 +361,7 @@ export class GuildQueue {
   /**
    * 큐에 있는 다음 음악을 재생합니다.
    * yt-dlp로 임시 파일에 다운로드 후 로컬에서 재생 — 네트워크 reconnect로 인한 배속/점프 현상 방지.
+   * prefetch 캐시에 이미 다운로드된 파일이 있으면 즉시 재생합니다.
    */
   public async playNext() {
     if (this.tracks.length === 0) {
@@ -349,8 +380,15 @@ export class GuildQueue {
     }
     this.currentTrack = track;
 
+    // prefetch 캐시 확인
+    const prefetched = this._prefetchCache.get(track.url);
+    this._prefetchCache.delete(track.url);
+
     try {
-      const tmpFile = await this._downloadToTmp(track.url);
+      const tmpFile = prefetched
+        ? await prefetched
+        : await this._downloadToTmp(track.url);
+
       if (!tmpFile) {
         throw new Error("트랙 다운로드에 실패했습니다.");
       }
@@ -365,10 +403,14 @@ export class GuildQueue {
       this.player.play(resource);
       console.log(`[Audio:Event] '${track.title}' 재생 시작`);
       this.onTrackStart?.(track);
+
+      // 다음 곡 백그라운드 prefetch 시작 (재생 시작 직후)
+      this._prefetchNext();
     } catch (err) {
-      console.error("음악 재생 실패:", err);
+      console.error(`[Audio:Error] '${track.title}' 재생 실패:`, err);
       this._currentTmpFile = null;
-      setTimeout(() => this.playNext(), 1000);
+      // Idle 상태 그대로이므로 Idle 핸들러가 깨어나지 않음 — 직접 다음 곡으로
+      void this.playNext();
     }
   }
 }
