@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.0] - 2026-05-23
+## [1.1.1] - 2026-05-23
 
 ### Added
 - Apple Music track and playlist URL playback via iTunes API + YouTube search.
