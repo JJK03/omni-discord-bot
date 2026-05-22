@@ -35,7 +35,7 @@ export class SimpleVoicePlayer {
       `[Voice:Rhythm] 인간적인 박자 카운트다운 시작: ${voiceChannel.name}`,
     );
 
-    const systemFFmpeg = "/usr/bin/ffmpeg";
+    const systemFFmpeg = process.env.FFMPEG_PATH ?? "ffmpeg";
 
     const connection = joinVoiceChannel({
       channelId: voiceChannel.id,

@@ -500,7 +500,7 @@ export async function searchYouTube(
     // 선행 대시(-) 필터링 추가 (옵션 오인 방지)
     const sanitizedQuery = query
       .replace(/[|;&$`\n\r"']/g, " ")
-      .replace(/^-+/, "")
+      .replace(/^\s*-+/, "")
       .trim();
     if (!sanitizedQuery) {
       console.error("유효하지 않은 검색어입니다.");
@@ -653,8 +653,8 @@ export async function resolveAppleMusicTrack(
   try {
     const parsed = new URL(appleUrl);
     const trackId = parsed.searchParams.get("i");
-    if (!trackId) {
-      console.error("[AppleMusic] 트랙 URL에 ?i= 파라미터가 없습니다.");
+    if (!trackId || !/^\d+$/.test(trackId)) {
+      console.error("[AppleMusic] 트랙 URL에 유효한 ?i= 파라미터가 없습니다.");
       return null;
     }
 

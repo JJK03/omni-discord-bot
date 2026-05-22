@@ -20,8 +20,23 @@ export async function executeClean(interaction: ChatInputCommandInteraction) {
 
   const amount = interaction.options.getInteger("수량")!;
 
+  if (amount < 1 || amount > 100) {
+    return interaction.reply({
+      content: "⚠️ 삭제 수량은 1~100 사이여야 합니다.",
+      flags: ["Ephemeral"],
+    });
+  }
+
   const channel = interaction.channel as TextChannel;
-  const deleted = await channel.bulkDelete(amount, true);
+  let deleted;
+  try {
+    deleted = await channel.bulkDelete(amount, true);
+  } catch {
+    return interaction.reply({
+      content: "❌ 메시지 삭제에 실패했습니다. 봇 권한을 확인해주세요.",
+      flags: ["Ephemeral"],
+    });
+  }
 
   if (deleted.size === 0) {
     return interaction.reply({

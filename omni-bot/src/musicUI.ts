@@ -19,6 +19,9 @@ const musicMessages = new Map<
   { channelId: string; messageId: string }
 >();
 
+// 동시 패널 전송 방지를 위한 길드별 락
+const panelLocks = new Set<string>();
+
 /**
  * 현재 재생 상태를 보여주는 임베드를 생성합니다.
  */
@@ -143,6 +146,9 @@ export async function sendOrUpdateMusicPanel(
   const buttonRows = createMusicButtons(queue);
   const components: any[] = [...buttonRows];
 
+  if (panelLocks.has(queue.guildId)) return;
+  panelLocks.add(queue.guildId);
+
   const existing = musicMessages.get(queue.guildId);
 
   try {
@@ -165,6 +171,8 @@ export async function sendOrUpdateMusicPanel(
     });
   } catch (err) {
     console.error("음악 패널 업데이트 실패:", err);
+  } finally {
+    panelLocks.delete(queue.guildId);
   }
 }
 
@@ -249,12 +257,14 @@ export async function handleMusicButton(
       const modes: ("off" | "one" | "all")[] = ["off", "one", "all"];
       const currentIndex = modes.indexOf(queue.repeatMode);
       queue.repeatMode = modes[(currentIndex + 1) % modes.length]!;
+      if (queue.repeatMode !== "off") queue.shuffle = false;
       await safeDefer();
       await sendOrUpdateMusicPanel(channel, queue);
       break;
     }
     case "music_shuffle": {
       queue.shuffle = !queue.shuffle;
+      if (queue.shuffle) queue.repeatMode = "off";
       await safeDefer();
       await sendOrUpdateMusicPanel(channel, queue);
       break;
