@@ -11,6 +11,7 @@ import {
 import { VoiceChannel, StageChannel } from "discord.js";
 import { spawn, execFile } from "node:child_process";
 import { createRequire } from "node:module";
+import https from "node:https";
 
 import staticFfmpegPath from "ffmpeg-static";
 
@@ -520,11 +521,12 @@ export async function searchYouTube(
 
         try {
           const result = JSON.parse(stdout);
-          if (result && result.webpage_url) {
-            resolve({
-              title: result.title || "알 수 없는 곡",
-              url: result.webpage_url,
-            });
+          // flat-playlist 모드에서 ytsearch 결과는 entries[0].url에 실제 YouTube URL이 있음
+          const entry = result?.entries?.[0];
+          const videoUrl = entry?.url ?? null;
+          const title = entry?.title || result.title || "알 수 없는 곡";
+          if (videoUrl) {
+            resolve({ title, url: videoUrl });
           } else {
             resolve(null);
           }
@@ -608,6 +610,180 @@ export async function getYouTubePlaylist(
       },
     );
   });
+}
+
+/**
+ * iTunes Lookup API를 통해 단일 트랙 정보를 가져옵니다.
+ */
+function itunesLookup(trackId: string): Promise<{ trackName: string; artistName: string } | null> {
+  return new Promise((resolve) => {
+    const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(trackId)}`;
+    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => (body += chunk));
+      res.on("end", () => {
+        try {
+          const data = JSON.parse(body);
+          const track = (data.results as any[]).find((r: any) => r.wrapperType === "track");
+          if (track) {
+            resolve({ trackName: track.trackName, artistName: track.artistName });
+          } else {
+            resolve(null);
+          }
+        } catch {
+          resolve(null);
+        }
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+/**
+ * Apple Music 트랙 URL → iTunes API로 곡 정보 추출 → YouTube 검색 후 Track 반환
+ * URL 형식: https://music.apple.com/kr/album/...?i={trackId}
+ */
+export async function resolveAppleMusicTrack(
+  appleUrl: string,
+  requestedBy: string,
+): Promise<Track | null> {
+  try {
+    const parsed = new URL(appleUrl);
+    const trackId = parsed.searchParams.get("i");
+    if (!trackId) {
+      console.error("[AppleMusic] 트랙 URL에 ?i= 파라미터가 없습니다.");
+      return null;
+    }
+
+    const info = await itunesLookup(trackId);
+    if (!info) {
+      console.error("[AppleMusic] iTunes API에서 트랙 정보를 가져오지 못했습니다.");
+      return null;
+    }
+
+    const searchQuery = `${info.trackName} ${info.artistName}`;
+    console.log(`[AppleMusic] 트랙 검색: ${searchQuery}`);
+
+    const result = await searchYouTube(searchQuery);
+    if (!result) return null;
+
+    return { title: `${info.trackName} - ${info.artistName}`, url: result.url, requestedBy };
+  } catch (err) {
+    console.error("[AppleMusic] 트랙 처리 오류:", err);
+    return null;
+  }
+}
+
+/**
+ * Apple Music 페이지 HTML 파싱으로 플레이리스트 트랙 목록 추출
+ * 5개씩 병렬 검색하며, 배치 완료마다 onBatchReady 콜백을 즉시 호출합니다.
+ * 첫 배치부터 재생을 시작하고 나머지는 백그라운드에서 큐에 추가됩니다.
+ */
+export async function resolveAppleMusicPlaylist(
+  appleUrl: string,
+  requestedBy: string,
+  onBatchReady?: (tracks: Track[], isFirst: boolean) => void,
+): Promise<{ playlistTitle: string; tracks: Track[] } | null> {
+  // URL 기본 검증
+  try {
+    const parsed = new URL(appleUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+
+  const html = await new Promise<string | null>((resolve) => {
+    https.get(
+      appleUrl,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html",
+          "Accept-Language": "ko-KR,ko;q=0.9",
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+      },
+    ).on("error", () => resolve(null));
+  });
+
+  if (!html) {
+    console.error("[AppleMusic] 플레이리스트 페이지를 가져오지 못했습니다.");
+    return null;
+  }
+
+  // 인라인 JSON 데이터 블록 추출
+  const scriptMatches = html.match(/<script[^>]*>([\s\S]*?)<\/script>/g) ?? [];
+  let pageData: any = null;
+  for (const tag of scriptMatches) {
+    const inner = tag.replace(/<script[^>]*>/, "").replace(/<\/script>/, "");
+    try {
+      const parsed = JSON.parse(inner);
+      // Apple Music 페이지 데이터 구조: { data: [{ data: { sections: [...] } }] }
+      if (parsed?.data?.[0]?.data?.sections) {
+        pageData = parsed;
+        break;
+      }
+    } catch {
+      // 파싱 불가 블록 무시
+    }
+  }
+
+  if (!pageData) {
+    console.error("[AppleMusic] 페이지에서 트랙 데이터를 찾을 수 없습니다.");
+    return null;
+  }
+
+  const sections: any[] = pageData.data[0].data.sections;
+  const headerSection = sections[0];
+  const playlistTitle: string = headerSection?.items?.[0]?.title ?? "Apple Music 플레이리스트";
+
+  // 트랙 섹션: title과 artistName이 모두 있는 items
+  const trackSection = sections.find((s: any) =>
+    s.items?.length > 0 && s.items[0]?.artistName !== undefined,
+  );
+
+  if (!trackSection) {
+    console.error("[AppleMusic] 트랙 섹션을 찾을 수 없습니다.");
+    return null;
+  }
+
+  const rawItems: any[] = trackSection.items;
+  console.log(`[AppleMusic] 플레이리스트 '${playlistTitle}': ${rawItems.length}개 트랙 발견`);
+
+  // 5개씩 병렬 검색, 배치 완료마다 콜백 호출
+  const BATCH_SIZE = 5;
+  const allTracks: Track[] = [];
+  let isFirst = true;
+
+  for (let i = 0; i < rawItems.length; i += BATCH_SIZE) {
+    const batch = rawItems.slice(i, i + BATCH_SIZE);
+    const batchResults: (Track | null)[] = new Array(batch.length).fill(null);
+
+    await Promise.all(
+      batch.map(async (item: any, batchIdx: number) => {
+        const trackName: string = item.title;
+        const artistName: string = item.artistName;
+        if (!trackName || !artistName) return;
+        const result = await searchYouTube(`${trackName} ${artistName}`);
+        if (result) {
+          batchResults[batchIdx] = { title: `${trackName} - ${artistName}`, url: result.url, requestedBy };
+        }
+      }),
+    );
+
+    const ready = batchResults.filter((t): t is Track => t !== null);
+    if (ready.length > 0) {
+      allTracks.push(...ready);
+      onBatchReady?.(ready, isFirst);
+      isFirst = false;
+    }
+  }
+
+  console.log(`[AppleMusic] YouTube 검색 완료: ${allTracks.length}/${rawItems.length}개 매칭`);
+  return { playlistTitle, tracks: allTracks };
 }
 
 export class VoiceManager {

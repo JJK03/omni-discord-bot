@@ -5,7 +5,7 @@ import {
 } from "discord.js";
 import { getGuildFeatures } from "../index.js";
 import { globalVoiceManager } from "../voiceManager.js";
-import { searchYouTube, getYouTubePlaylist } from "../voiceManager.js";
+import { searchYouTube, getYouTubePlaylist, resolveAppleMusicTrack, resolveAppleMusicPlaylist } from "../voiceManager.js";
 import { sendOrUpdateMusicPanel, deleteMusicPanel } from "../musicUI.js";
 
 export async function executeMusic(interaction: ChatInputCommandInteraction) {
@@ -61,13 +61,54 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
 
     // URL인지 검색어인지 판별
     const isUrl = query.startsWith("http");
-    const isPlaylist =
-      isUrl && (query.includes("list=") || query.includes("playlist"));
+    const isAppleMusic = isUrl && query.includes("music.apple.com");
+    const isAppleMusicPlaylist = isAppleMusic && query.includes("/playlist/");
+    const isYouTubePlaylist =
+      isUrl && !isAppleMusic && (query.includes("list=") || query.includes("playlist"));
 
     // 서버 닉네임 사용
     const displayName = member.displayName;
 
-    if (isPlaylist) {
+    if (isAppleMusicPlaylist) {
+      await interaction.editReply(
+        "⏳ Apple Music 플레이리스트를 가져오는 중입니다...",
+      );
+
+      let repliedDeleted = false;
+      const playlistInfo = await resolveAppleMusicPlaylist(
+        query,
+        displayName,
+        async (tracks, isFirst) => {
+          await queue.enqueueMultiple(tracks);
+          if (isFirst && !repliedDeleted) {
+            repliedDeleted = true;
+            await interaction.deleteReply().catch(() => {});
+          }
+        },
+      );
+
+      if (!playlistInfo || playlistInfo.tracks.length === 0) {
+        if (!repliedDeleted) {
+          return interaction.editReply(
+            "❌ Apple Music 플레이리스트를 가져올 수 없습니다. 비공개 목록이거나 잘못된 주소일 수 있습니다.",
+          );
+        }
+        return;
+      }
+
+      if (!repliedDeleted) await interaction.deleteReply().catch(() => {});
+    } else if (isAppleMusic) {
+      await interaction.editReply("⏳ Apple Music에서 곡 정보를 가져오는 중입니다...");
+
+      const trackInfo = await resolveAppleMusicTrack(query, displayName);
+
+      if (!trackInfo) {
+        return interaction.editReply("❌ Apple Music 링크에서 곡을 찾을 수 없습니다.");
+      }
+
+      await queue.enqueue(trackInfo);
+      await interaction.deleteReply();
+    } else if (isYouTubePlaylist) {
       await interaction.editReply(
         "⏳ 재생목록을 검색하고 있습니다... (곡 수에 따라 시간이 걸릴 수 있습니다)",
       );

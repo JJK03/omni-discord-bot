@@ -1,5 +1,45 @@
 # Omni 프로젝트 - 자동화 테스트 결과 보고서
 
+**일자**: 2026-05-22
+**테스트 도구**: Vitest
+**실행 환경**: 로컬 개발 환경 (Local Development)
+
+## 📊 요약
+| 카테고리 | 총 테스트 수 | 통과 | 실패 | 성공률 |
+| :--- | :---: | :---: | :---: | :---: |
+| **Apple Music 링크 지원** | 5 | 5 | 0 | 100% |
+| **오디오 안정성 (Audio Stability)** | 2 | 2 | 0 | 100% |
+| **기존 기능 회귀 (Regression)** | 5 | 5 | 0 | 100% |
+| **전체 합계** | **12** | **12** | **0** | **100%** |
+
+## 🧪 세부 테스트 케이스
+
+### 1. Apple Music 링크 지원 (feature/apple-music)
+- [통과] **트랙 URL → iTunes 조회 → YouTube 매핑**: `?i=trackId` 파싱 후 iTunes API로 곡명/아티스트 추출, YouTube 검색 결과 Track으로 반환
+- [통과] **`?i=` 파라미터 누락 시 null 반환**: 앨범 URL에 트랙 ID가 없으면 안전하게 null 반환
+- [통과] **iTunes API 빈 결과 처리**: 존재하지 않는 trackId에 대해 null 반환
+- [통과] **플레이리스트 HTML 파싱 → 트랙 일괄 매핑**: sections[1].items에서 title+artistName 추출, 각 곡 YouTube 검색 후 Track[] 반환
+- [통과] **URL 감지 분기 정확성**: 트랙/플레이리스트/YouTube URL 4가지 패턴 모두 올바른 분기로 라우팅
+
+### 2. TLS 재연결 끊김 버그 수정 (fix/audio-reconnect-skip)
+- [통과] **maxMissedFrames 250 설정 검증**: `GuildQueue` 생성 시 `createAudioPlayer`가 `maxMissedFrames: 250` 옵션으로 호출되는지 확인
+- [통과] **스킵 로그 포맷 검증**: `[Audio:Skip] 닉네임: 스킵 (곡 제목)` 형식으로 콘솔 출력 확인
+
+### 2. 기존 음악 기능 회귀 테스트
+- [통과] **반복 모드 초기값**: `repeatMode = 'off'`, `shuffle = false` 기본값 유지
+- [통과] **반복 모드 순환**: off → one → all → off 순환 로직 정상 동작
+- [통과] **한 곡 반복**: 종료된 트랙이 대기열 맨 앞으로 재삽입
+- [통과] **전체 반복**: 종료된 트랙이 대기열 맨 뒤로 재삽입
+- [통과] **셔플 재생**: 무작위 인덱스 선택 후 해당 트랙 제거 로직 정상 동작
+
+## 💡 기술적 특이사항
+- **TLS 재연결 허용 시간**: `maxMissedFrames` 기본값 5(100ms) → 250(5초)으로 상향 조정. `Connection reset by peer` 발생 시 즉각적인 Idle 전환 방지.
+- **스킵 로그**: 서버 닉네임(`displayName`) 우선 사용, 없을 경우 사용자명(`username`) fallback 적용.
+
+---
+
+
+
 **일자**: 2026-04-10
 **테스트 도구**: Vitest & Manual Verification
 **실행 환경**: 로컬 개발 환경 (Local Development)
