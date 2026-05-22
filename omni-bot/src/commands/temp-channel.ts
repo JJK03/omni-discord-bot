@@ -29,6 +29,13 @@ export async function executeTempChannel(
   const channelName = interaction.options.getString("채널이름", true);
   const durationMinutes = interaction.options.getInteger("유지시간", true);
 
+  if (channelName.length < 1 || channelName.length > 100) {
+    return interaction.reply({
+      content: "❌ 채널 이름은 1~100자 사이여야 합니다.",
+      flags: ["Ephemeral"],
+    });
+  }
+
   // 만료 시간 계산
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + durationMinutes);

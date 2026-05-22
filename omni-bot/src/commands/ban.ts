@@ -32,7 +32,14 @@ export async function executeBan(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild;
   if (!guild) return;
 
-  await guild.members.ban(targetUser.id, { reason });
+  try {
+    await guild.members.ban(targetUser.id, { reason });
+  } catch {
+    return interaction.reply({
+      content: "❌ 차단에 실패했습니다. 봇 권한을 확인해주세요.",
+      flags: ["Ephemeral"],
+    });
+  }
 
   await logBotAction(guild.id, "차단", interaction.user.tag, { targetUser: targetUser.tag, reason });
 

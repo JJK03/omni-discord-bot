@@ -25,6 +25,13 @@ export async function executeNickname(
   const targetNickname = interaction.options.getString("변경할닉네임", true);
   const durationString = interaction.options.getString("유지시간", true);
 
+  if (targetNickname.length > 32) {
+    return interaction.reply({
+      content: "❌ 닉네임은 최대 32자입니다.",
+      flags: ["Ephemeral"],
+    });
+  }
+
   if (!targetUser) {
     return interaction.reply({
       content: "대상을 찾을 수 없습니다.",

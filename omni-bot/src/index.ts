@@ -206,10 +206,19 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[omni-bot] 준비 완료! 로그인 계정: ${c.user.tag}`);
   globalVoiceManager.setClient(c);
 
-  // 1분마다 임시 채널/닉네임 정리 (setInterval 사용)
-  setInterval(() => {
-    checkAndRemoveExpiredChannels();
-    checkAndRestoreExpiredNicknames();
+  // 1분마다 임시 채널/닉네임 정리 — 실행 중 겹침 방지
+  let schedulerRunning = false;
+  setInterval(async () => {
+    if (schedulerRunning) return;
+    schedulerRunning = true;
+    try {
+      await Promise.all([
+        checkAndRemoveExpiredChannels(),
+        checkAndRestoreExpiredNicknames(),
+      ]);
+    } finally {
+      schedulerRunning = false;
+    }
   }, DELAYS.SCHEDULE_INTERVAL);
 
   // 모든 서버 등록 및 리스너 시작 (Staggering 적용)
@@ -237,6 +246,7 @@ client.on(Events.GuildDelete, (guild) => {
     settingsUnsubMap.delete(guild.id);
   }
   guildFeaturesMap.delete(guild.id);
+  import("./musicUI.js").then(({ clearMusicPanelState }) => clearMusicPanelState(guild.id)).catch(() => {});
 });
 
 // ─────────────────────────────────────────
@@ -247,8 +257,8 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   if (oldState.member?.id !== client.user?.id) return;
   if (oldState.channel && !newState.channel) {
     const guildId = oldState.guild.id;
-    const queue = globalVoiceManager.getQueue(guildId);
-    if (queue.connection) {
+    const queue = globalVoiceManager.peekQueue(guildId);
+    if (queue?.connection) {
       queue.destroy();
     }
   }
@@ -268,8 +278,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // 음악 삭제 메뉴 등
     if (interaction.customId === "music_delete_select") {
       if (!interaction.guild) return;
+      const queue = globalVoiceManager.peekQueue(interaction.guild.id);
+      if (!queue) return;
       const { handleMusicSelect } = await import("./musicUI.js");
-      const queue = globalVoiceManager.getQueue(interaction.guild.id);
       await handleMusicSelect(interaction, queue);
     }
   }
@@ -304,7 +315,7 @@ async function gracefulShutdown(signal: string) {
 
   // 3. 디스코드 클라이언트 종료
   console.log("[Shutdown] Discord API 연결 해제 중...");
-  client.destroy();
+  await client.destroy();
 
   console.log(`[Shutdown] ${signal} 처리 완료. 프로세스를 종료합니다.`);
   process.exit(0);

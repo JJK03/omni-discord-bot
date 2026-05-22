@@ -26,6 +26,7 @@ const CUSTOM_ID = {
 function parseGenderRole(customId: string, prefix: string): { gender: string; roleId: string } {
   const withoutPrefix = customId.slice(prefix.length);
   const sep = withoutPrefix.indexOf("_");
+  if (sep === -1) return { gender: "", roleId: "" };
   return { gender: withoutPrefix.slice(0, sep), roleId: withoutPrefix.slice(sep + 1) };
 }
 
@@ -35,7 +36,11 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
   // [음악 버튼] (omni)
   if (customId.startsWith("music_")) {
     if (!interaction.guild) return;
-    const queue = globalVoiceManager.getQueue(interaction.guild.id);
+    const queue = globalVoiceManager.peekQueue(interaction.guild.id);
+    if (!queue) {
+      await interaction.reply({ content: "현재 음악이 재생 중이 아닙니다.", flags: ["Ephemeral"] });
+      return;
+    }
     await handleMusicButton(interaction, queue, () => {
       globalVoiceManager.removeQueue(interaction.guild!.id);
     });

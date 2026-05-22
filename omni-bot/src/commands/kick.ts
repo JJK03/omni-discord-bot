@@ -32,8 +32,24 @@ export async function executeKick(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild;
   if (!guild) return;
 
-  const member = await guild.members.fetch(targetUser.id);
-  await member.kick(reason);
+  let member;
+  try {
+    member = await guild.members.fetch(targetUser.id);
+  } catch {
+    return interaction.reply({
+      content: "❌ 해당 유저를 서버에서 찾을 수 없습니다.",
+      flags: ["Ephemeral"],
+    });
+  }
+
+  try {
+    await member.kick(reason);
+  } catch {
+    return interaction.reply({
+      content: "❌ 추방에 실패했습니다. 봇 권한을 확인해주세요.",
+      flags: ["Ephemeral"],
+    });
+  }
 
   await logBotAction(guild.id, "추방", interaction.user.tag, { targetUser: targetUser.tag, reason });
 
