@@ -60,6 +60,8 @@ export class GuildQueue {
   private _currentTmpFile: string | null = null;
   // 다음 곡 prefetch 캐시 (url → 다운로드된 임시 파일 경로)
   private _prefetchCache: Map<string, Promise<string | null>> = new Map();
+  // playNext 호출마다 증가하는 토큰 — 다운로드 완료 시 스킵 여부 감지용
+  private _playToken: number = 0;
 
   // 자동 퇴장용 타이머
   private _disconnectTimeout: NodeJS.Timeout | null = null;
@@ -90,6 +92,9 @@ export class GuildQueue {
 
     // 음악이 끝나면 다음 곡 재생
     this.player.on(AudioPlayerStatus.Idle, () => {
+      // destroy() 후 player.stop()이 비동기로 Idle을 발화할 수 있음 — 좀비 동작 방지
+      if (!this.connection) return;
+
       const finishedTrack = this.currentTrack;
       this._killChildProcesses();
 
@@ -309,7 +314,7 @@ export class GuildQueue {
     this.tracks = [];
     this.currentTrack = null;
     this._killChildProcesses();
-    void this._clearPrefetchCache();
+    await this._clearPrefetchCache();
     this.player.stop();
     if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
       this.connection.destroy();
@@ -330,7 +335,7 @@ export class GuildQueue {
     this._stopDisconnectTimer();
     this.tracks.push(track);
     this.onQueueUpdate?.();
-    if (this.player.state.status === AudioPlayerStatus.Idle) {
+    if (!this.currentTrack && this.player.state.status === AudioPlayerStatus.Idle) {
       await this.playNext();
     }
   }
@@ -354,8 +359,15 @@ export class GuildQueue {
    */
   public removeTrack(index: number): Track | null {
     if (index < 0 || index >= this.tracks.length) return null;
-    const removed = this.tracks.splice(index, 1);
-    return removed.length > 0 ? removed[0]! : null;
+    const [removed] = this.tracks.splice(index, 1);
+    if (!removed) return null;
+    // 삭제된 곡이 prefetch되어 있으면 캐시에서 제거하고 임시 파일 삭제
+    const cached = this._prefetchCache.get(removed.url);
+    if (cached) {
+      this._prefetchCache.delete(removed.url);
+      cached.then((f) => { if (f) try { fs.unlinkSync(f); } catch {} }).catch(() => {});
+    }
+    return removed;
   }
 
   /**
@@ -370,6 +382,8 @@ export class GuildQueue {
 
     this._stopDisconnectTimer();
     this._killChildProcesses();
+
+    const myToken = ++this._playToken;
 
     let track: Track;
     if (this.shuffle && this.tracks.length > 0) {
@@ -388,6 +402,14 @@ export class GuildQueue {
       const tmpFile = prefetched
         ? await prefetched
         : await this._downloadToTmp(track.url);
+
+      // 다운로드 중 스킵이 발생하면 토큰이 달라짐 — 재생하지 않고 파일만 삭제
+      if (this._playToken !== myToken) {
+        if (tmpFile) {
+          try { fs.unlinkSync(tmpFile); } catch {}
+        }
+        return;
+      }
 
       if (!tmpFile) {
         throw new Error("트랙 다운로드에 실패했습니다.");
@@ -409,6 +431,12 @@ export class GuildQueue {
     } catch (err) {
       console.error(`[Audio:Error] '${track.title}' 재생 실패:`, err);
       this._currentTmpFile = null;
+      this.currentTrack = null;
+      if (this.tracks.length === 0) {
+        this.onQueueEnd?.();
+        this._startDisconnectTimer();
+        return;
+      }
       // Idle 상태 그대로이므로 Idle 핸들러가 깨어나지 않음 — 직접 다음 곡으로
       void this.playNext();
     }
@@ -504,7 +532,7 @@ export async function getYouTubePlaylist(
         "--skip-download",
         "--flat-playlist",
       ],
-      { maxBuffer: 1024 * 1024 * 50 }, // 매우 커질 수 있으므로 버퍼 증가 (50MB)
+      { maxBuffer: 1024 * 1024 * 50, timeout: 60000 }, // 50MB 버퍼, 60초 timeout
       (error, stdout, stderr) => {
         if (error) {
           console.error("YouTube 플레이리스트 추출 실패:", error.message);
@@ -760,6 +788,11 @@ export class VoiceManager {
       this.queues.set(guildId, queue);
     }
     return queue;
+  }
+
+  /** connection 없이 큐를 생성하지 않음 — 이벤트 핸들러용 존재 확인 */
+  public peekQueue(guildId: string): GuildQueue | undefined {
+    return this.queues.get(guildId);
   }
 
   public getAllQueues(): Map<string, GuildQueue> {

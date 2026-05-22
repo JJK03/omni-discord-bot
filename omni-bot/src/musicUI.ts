@@ -177,6 +177,13 @@ export async function sendOrUpdateMusicPanel(
 }
 
 /**
+ * 서버 퇴장 시 해당 서버의 musicMessages 상태를 정리합니다.
+ */
+export function clearMusicPanelState(guildId: string): void {
+  musicMessages.delete(guildId);
+}
+
+/**
  * 음악 패널을 삭제합니다. (봇 퇴장 시)
  */
 export async function deleteMusicPanel(
