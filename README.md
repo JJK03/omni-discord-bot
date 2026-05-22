@@ -1,4 +1,4 @@
-<img src="ICON_URL" align="left" height="100" alt="Omni Bot Icon" />
+<img src="https://raw.githubusercontent.com/jinsh1210/omni-discord-bot/main/app_icon.png" align="left" height="100" alt="Omni Bot Icon" />
 
 # Omni
 High-performance, modular Discord bot — music streaming, server management, and community tools in one ecosystem.
@@ -13,7 +13,7 @@ High-performance, modular Discord bot — music streaming, server management, an
 
 ## 스크린샷
 
-![Dashboard Screenshot](SCREENSHOT_URL)
+![Dashboard Screenshot](https://raw.githubusercontent.com/jinsh1210/omni-discord-bot/main/dashboard.png)
 
 ## 기능
 
