@@ -48,3 +48,32 @@ CHANGELOG.md
 
 # TypeScript cache
 *.tsbuildinfo
+# Environment & secrets
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets.*
+credentials.*
+application-prod.properties
+application-prod.yml
+application-secret.yml
+# AI tools (local only)
+.bkit/
+.claude_history
+claude_session*
+.aider*
+.cursor/
+.copilot/
+# OS
+Thumbs.db
+desktop.ini
+# IDE
+*.iml
+*.swp
+*.swo
+.next/
+coverage/
