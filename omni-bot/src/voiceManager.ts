@@ -412,14 +412,16 @@ export class GuildQueue {
       this._ffmpegProcess = ffmpeg;
 
       ffmpeg.on("close", (code: number) => {
-        if (code !== 0 && code !== null) {
+        // Broken pipe(코드 1)는 Discord 파이프가 먼저 닫힐 때 발생하는 정상 종료 신호
+        if (code !== 0 && code !== null && code !== 1) {
           console.error(`[Audio:Error] FFmpeg 프로세스가 종료되었습니다. (종료 코드: ${code})`);
         }
       });
 
       ffmpeg.stderr.on("data", (data: Buffer) => {
         const line = data.toString();
-        // 모든 stderr 출력 (로그 양이 많아질 수 있으나 디버깅을 위해 일시 허용)
+        // Broken pipe는 곡 종료/스킵 시 정상 발생 — 무시
+        if (line.includes("Broken pipe") || line.includes("Conversion failed")) return;
         if (line.includes("Error") || line.includes("failed")) {
           console.error(`[Audio:FFmpeg-Stderr] ${line.trim()}`);
         }
