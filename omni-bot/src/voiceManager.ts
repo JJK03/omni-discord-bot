@@ -191,6 +191,7 @@ export class GuildQueue {
             "--user-agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           ],
+          { timeout: 30000 },
           (error, stdout, stderr) => {
             if (error) {
               console.error("URL 추출 실패 (stderr):", stderr || error.message);
@@ -514,10 +515,10 @@ export async function searchYouTube(
         "--skip-download",
         "--flat-playlist",
       ],
-      { maxBuffer: 1024 * 1024 * 10 },
+      { maxBuffer: 1024 * 1024 * 10, timeout: 15000 },
       (error, stdout, stderr) => {
         if (error) {
-          console.error("YouTube 검색 실패:", error.message);
+          console.error(`YouTube 검색 실패 [${sanitizedQuery.slice(0, 30)}]:`, error.message);
           if (stderr) console.error("yt-dlp stderr:", stderr);
           return resolve(null);
         }
@@ -621,23 +622,21 @@ export async function getYouTubePlaylist(
 function itunesLookup(trackId: string): Promise<{ trackName: string; artistName: string } | null> {
   return new Promise((resolve) => {
     const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(trackId)}`;
-    https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0" } }, (res) => {
       let body = "";
       res.on("data", (chunk) => (body += chunk));
       res.on("end", () => {
         try {
           const data = JSON.parse(body);
           const track = (data.results as any[]).find((r: any) => r.wrapperType === "track");
-          if (track) {
-            resolve({ trackName: track.trackName, artistName: track.artistName });
-          } else {
-            resolve(null);
-          }
+          resolve(track ? { trackName: track.trackName, artistName: track.artistName } : null);
         } catch {
           resolve(null);
         }
       });
-    }).on("error", () => resolve(null));
+    });
+    req.on("error", () => resolve(null));
+    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
   });
 }
 
@@ -695,7 +694,7 @@ export async function resolveAppleMusicPlaylist(
   }
 
   const html = await new Promise<string | null>((resolve) => {
-    https.get(
+    const req = https.get(
       appleUrl,
       {
         headers: {
@@ -708,8 +707,11 @@ export async function resolveAppleMusicPlaylist(
         const chunks: Buffer[] = [];
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        res.on("error", () => resolve(null));
       },
-    ).on("error", () => resolve(null));
+    );
+    req.on("error", () => resolve(null));
+    req.setTimeout(20000, () => { req.destroy(); resolve(null); });
   });
 
   if (!html) {
@@ -770,9 +772,15 @@ export async function resolveAppleMusicPlaylist(
         const trackName: string = item.title;
         const artistName: string = item.artistName;
         if (!trackName || !artistName) return;
-        const result = await searchYouTube(`${trackName} ${artistName}`);
-        if (result) {
-          batchResults[batchIdx] = { title: `${trackName} - ${artistName}`, url: result.url, requestedBy };
+        try {
+          const result = await searchYouTube(`${trackName} ${artistName}`);
+          if (result) {
+            batchResults[batchIdx] = { title: `${trackName} - ${artistName}`, url: result.url, requestedBy };
+          } else {
+            console.warn(`[AppleMusic] 검색 실패 (건너뜀): ${trackName} - ${artistName}`);
+          }
+        } catch (err) {
+          console.warn(`[AppleMusic] 검색 오류 (건너뜀): ${trackName} - ${artistName}`, err);
         }
       }),
     );
@@ -780,7 +788,11 @@ export async function resolveAppleMusicPlaylist(
     const ready = batchResults.filter((t): t is Track => t !== null);
     if (ready.length > 0) {
       allTracks.push(...ready);
-      if (onBatchReady) await onBatchReady(ready, isFirst);
+      try {
+        if (onBatchReady) await onBatchReady(ready, isFirst);
+      } catch (err) {
+        console.error("[AppleMusic] 배치 enqueue 오류:", err);
+      }
       isFirst = false;
     }
   }
