@@ -12,15 +12,23 @@ import { VoiceChannel, StageChannel } from "discord.js";
 import { spawn, execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import https from "node:https";
-
-import staticFfmpegPath from "ffmpeg-static";
-
-// FFmpeg 바이너리 경로 결정 (도커 시스템 ffmpeg 우선, 로컬 fallback)
-const ffmpegPath: string = "ffmpeg"; // 기본은 시스템 경로 사용 (Docker 대응)
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
 
 // yt-dlp 바이너리 경로
 const require = createRequire(import.meta.url);
-const YTDL_BIN = "yt-dlp"; // Homebrew로 설치된 시스템 yt-dlp 사용
+const YTDL_BIN = "yt-dlp";
+
+// 임시 오디오 파일 디렉토리 (봇 시작 시 잔여 파일 정리)
+const AUDIO_TMP_DIR = path.join(os.tmpdir(), "omni-audio");
+fs.mkdirSync(AUDIO_TMP_DIR, { recursive: true });
+// 이전 실행에서 남은 파일 정리
+try {
+  for (const f of fs.readdirSync(AUDIO_TMP_DIR)) {
+    fs.unlinkSync(path.join(AUDIO_TMP_DIR, f));
+  }
+} catch {}
 
 export interface Track {
   title: string;
@@ -48,6 +56,12 @@ export class GuildQueue {
   // 현재 실행 중인 자식 프로세스 참조 (스킵/정지 시 안전 정리용)
   private _ytdlpProcess: ReturnType<typeof spawn> | null = null;
   private _ffmpegProcess: ReturnType<typeof spawn> | null = null;
+  // 현재 재생 중인 임시 오디오 파일 경로
+  private _currentTmpFile: string | null = null;
+  // 다음 곡 prefetch 캐시 (url → 다운로드된 임시 파일 경로)
+  private _prefetchCache: Map<string, Promise<string | null>> = new Map();
+  // playNext 호출마다 증가하는 토큰 — 다운로드 완료 시 스킵 여부 감지용
+  private _playToken: number = 0;
 
   // 자동 퇴장용 타이머
   private _disconnectTimeout: NodeJS.Timeout | null = null;
@@ -56,8 +70,8 @@ export class GuildQueue {
     this.guildId = guildId;
     this.player = createAudioPlayer({
       behaviors: {
-        // TLS 재연결 최대 15초 허용 (20ms × 750)
-        maxMissedFrames: 750,
+        // 로컬 파일 재생이므로 기본값(50)으로 복원
+        maxMissedFrames: 50,
       },
     });
 
@@ -68,16 +82,19 @@ export class GuildQueue {
       }
     });
 
-    // 플레이어 에러 핸들링
+    // 플레이어 에러 핸들링 — playNext는 호출하지 않음
+    // error 직후 AudioPlayer가 자동으로 Idle로 전이 → Idle 핸들러에서 playNext 처리
     this.player.on("error", (error) => {
       console.error(
         `오디오 에러: ${error.message} (리소스: ${(error.resource as any)?.metadata?.title})`,
       );
-      this.playNext();
     });
 
     // 음악이 끝나면 다음 곡 재생
     this.player.on(AudioPlayerStatus.Idle, () => {
+      // destroy() 후 player.stop()이 비동기로 Idle을 발화할 수 있음 — 좀비 동작 방지
+      if (!this.connection) return;
+
       const finishedTrack = this.currentTrack;
       this._killChildProcesses();
 
@@ -148,80 +165,97 @@ export class GuildQueue {
   }
 
   /**
-   * 현재 실행 중인 ffmpeg 자식 프로세스를 안전하게 종료합니다.
+   * 현재 실행 중인 자식 프로세스와 임시 파일을 안전하게 정리합니다.
+   * prefetchCache는 건드리지 않음 — 진행 중인 prefetch는 playNext에서 재사용.
    */
   private _killChildProcesses() {
     if (this._ffmpegProcess) {
-      try {
-        this._ffmpegProcess.kill("SIGKILL");
-      } catch {}
+      try { this._ffmpegProcess.kill("SIGKILL"); } catch {}
       this._ffmpegProcess = null;
     }
-    // yt-dlp는 이제 URL 추출 후 즉시 종료되므로 메인 루프에서 관리할 필요가 거의 없으나 안전하게 처리
     if (this._ytdlpProcess) {
-      try {
-        this._ytdlpProcess.kill("SIGKILL");
-      } catch {}
+      try { this._ytdlpProcess.kill("SIGKILL"); } catch {}
       this._ytdlpProcess = null;
+    }
+    if (this._currentTmpFile) {
+      try { fs.unlinkSync(this._currentTmpFile); } catch {}
+      this._currentTmpFile = null;
     }
   }
 
   /**
-   * yt-dlp를 사용하여 스트리밍 가능한 직접 URL을 추출합니다.
-   * 간헐적인 IP 차단 및 추출 실패에 대비해 재시도 로직을 포함합니다.
+   * prefetch 캐시를 비우고 대기 중인 임시 파일도 모두 삭제합니다.
+   * destroy() 또는 큐 초기화 시 호출.
    */
-  private async _getDirectUrl(
-    url: string,
-    retries = 2,
-  ): Promise<string | null> {
-    const attempt = async (): Promise<string | null> => {
-      return new Promise((resolve, reject) => {
-        execFile(
-          YTDL_BIN,
-          [
-            url,
-            "-f",
-            "bestaudio",
-            "--get-url",
-            "--no-warnings",
-            "--force-ipv4", // IPv6 우선순위로 인한 접속 지연 방지
-            "--geo-bypass",
-            "--no-playlist",
-            "--rm-cache-dir", // 캐시 무효화로 인한 일시적 오류 리셋
-            "--user-agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          ],
-          { timeout: 30000 },
-          (error, stdout, stderr) => {
-            if (error) {
-              console.error("URL 추출 실패 (stderr):", stderr || error.message);
-              return reject(error);
-            }
-            const cleanUrl = stdout.trim();
-            if (!cleanUrl) {
-              return reject(new Error("추출된 URL이 비어 있습니다."));
-            }
-            resolve(cleanUrl);
-          },
-        );
-      });
-    };
+  private async _clearPrefetchCache() {
+    for (const [url, promise] of this._prefetchCache) {
+      const tmpFile = await promise.catch(() => null);
+      if (tmpFile) {
+        try { fs.unlinkSync(tmpFile); } catch {}
+      }
+    }
+    this._prefetchCache.clear();
+  }
 
-    let lastError = null;
+  /**
+   * 다음 곡을 백그라운드에서 미리 다운로드합니다.
+   * shuffle/repeat-one에서는 실행 안 함 (다음 곡이 불확정 또는 동일).
+   */
+  private _prefetchNext() {
+    if (this.shuffle || this.repeatMode === "one") return;
+    const next = this.tracks[0];
+    if (!next || this._prefetchCache.has(next.url)) return;
+    console.log(`[Audio:Prefetch] 다음 곡 미리 다운로드 시작: ${next.title}`);
+    this._prefetchCache.set(next.url, this._downloadToTmp(next.url));
+  }
+
+  /**
+   * yt-dlp로 트랙을 임시 파일(.webm)로 다운로드합니다.
+   * 다운로드 완료 후 파일 경로를 반환하므로 네트워크 reconnect 없이 안정적으로 재생됩니다.
+   */
+  private async _downloadToTmp(url: string, retries = 1): Promise<string | null> {
+    const tmpPath = path.join(AUDIO_TMP_DIR, `${this.guildId}-${Date.now()}.webm`);
+
+    const attempt = () => new Promise<string | null>((resolve, reject) => {
+      execFile(
+        YTDL_BIN,
+        [
+          url,
+          "-f", "bestaudio[ext=webm]/bestaudio",
+          "-o", tmpPath,
+          "--no-warnings",
+          "--force-ipv4",
+          "--geo-bypass",
+          "--no-playlist",
+          "--user-agent",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        ],
+        { timeout: 120000 },
+        (error, _stdout, stderr) => {
+          if (error) {
+            console.error("[Audio:Download] 다운로드 실패:", stderr || error.message);
+            try { fs.unlinkSync(tmpPath); } catch {}
+            return reject(error);
+          }
+          if (!fs.existsSync(tmpPath)) {
+            return reject(new Error("다운로드된 파일이 없습니다."));
+          }
+          resolve(tmpPath);
+        },
+      );
+    });
+
     for (let i = 0; i <= retries; i++) {
       try {
         if (i > 0) {
-          console.log(`[Voice] URL 추출 재시도 중... (${i}/${retries})`);
-          await new Promise((resolve) => setTimeout(resolve, 1500)); // 1.5초 대기 후 재시도
+          console.log(`[Audio:Download] 재시도 중... (${i}/${retries})`);
+          await new Promise((r) => setTimeout(r, 1500));
         }
-        const streamUrl = await attempt();
-        if (streamUrl) return streamUrl;
+        return await attempt();
       } catch (err) {
-        lastError = err;
+        if (i === retries) console.error("[Audio:Download] 최종 실패:", err);
       }
     }
-
-    console.error("최종 URL 추출 실패:", lastError);
     return null;
   }
 
@@ -273,16 +307,6 @@ export class GuildQueue {
   }
 
   /**
-   * 시스템에 특정 명령어가 존재하는지 확인합니다.
-   */
-  private async _isCommandExists(command: string): Promise<boolean> {
-    return new Promise((resolve) => {
-      const check = spawn("which", [command]);
-      check.on("close", (code) => resolve(code === 0));
-    });
-  }
-
-  /**
    * 오디오 재생을 완전히 종료하고 커넥션을 초기화합니다.
    */
   public async destroy() {
@@ -290,6 +314,7 @@ export class GuildQueue {
     this.tracks = [];
     this.currentTrack = null;
     this._killChildProcesses();
+    await this._clearPrefetchCache();
     this.player.stop();
     if (this.connection && this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
       this.connection.destroy();
@@ -310,7 +335,7 @@ export class GuildQueue {
     this._stopDisconnectTimer();
     this.tracks.push(track);
     this.onQueueUpdate?.();
-    if (this.player.state.status === AudioPlayerStatus.Idle) {
+    if (!this.currentTrack && this.player.state.status === AudioPlayerStatus.Idle) {
       await this.playNext();
     }
   }
@@ -334,24 +359,31 @@ export class GuildQueue {
    */
   public removeTrack(index: number): Track | null {
     if (index < 0 || index >= this.tracks.length) return null;
-    const removed = this.tracks.splice(index, 1);
-    return removed.length > 0 ? removed[0]! : null;
+    const [removed] = this.tracks.splice(index, 1);
+    if (!removed) return null;
+    // 삭제된 곡이 prefetch되어 있으면 캐시에서 제거하고 임시 파일 삭제
+    const cached = this._prefetchCache.get(removed.url);
+    if (cached) {
+      this._prefetchCache.delete(removed.url);
+      cached.then((f) => { if (f) try { fs.unlinkSync(f); } catch {} }).catch(() => {});
+    }
+    return removed;
   }
 
   /**
    * 큐에 있는 다음 음악을 재생합니다.
-   * [성능 최적화 버전] ffmpeg 단일 프로세스가 URL에서 직접 스트리밍하여 CPU 부하를 최소화합니다.
+   * yt-dlp로 임시 파일에 다운로드 후 로컬에서 재생 — 네트워크 reconnect로 인한 배속/점프 현상 방지.
+   * prefetch 캐시에 이미 다운로드된 파일이 있으면 즉시 재생합니다.
    */
   public async playNext() {
     if (this.tracks.length === 0) {
       return;
     }
 
-    // 재생 시작 시 타이머 중지
     this._stopDisconnectTimer();
-
-    // 이전 프로세스 정리
     this._killChildProcesses();
+
+    const myToken = ++this._playToken;
 
     let track: Track;
     if (this.shuffle && this.tracks.length > 0) {
@@ -362,127 +394,51 @@ export class GuildQueue {
     }
     this.currentTrack = track;
 
+    // prefetch 캐시 확인
+    const prefetched = this._prefetchCache.get(track.url);
+    this._prefetchCache.delete(track.url);
+
     try {
-      // 1단계: 직접 스트리밍 URL 추출 (빠른 실행 후 종료)
-      const streamUrl = await this._getDirectUrl(track.url);
-      if (!streamUrl) {
-        throw new Error("스트리밍 URL을 가져올 수 없습니다.");
+      const tmpFile = prefetched
+        ? await prefetched
+        : await this._downloadToTmp(track.url);
+
+      // 다운로드 중 스킵이 발생하면 토큰이 달라짐 — 재생하지 않고 파일만 삭제
+      if (this._playToken !== myToken) {
+        if (tmpFile) {
+          try { fs.unlinkSync(tmpFile); } catch {}
+        }
+        return;
       }
 
-      // 2단계: ffmpeg 고성능 파이프라인
-      // 시스템 ffmpeg가 없으면 static 경로 사용
-      const finalFfmpegPath: string | null = ffmpegPath === "ffmpeg" 
-        ? (await this._isCommandExists("ffmpeg") ? "ffmpeg" : (staticFfmpegPath as unknown as string)) 
-        : ffmpegPath;
-
-      if (!finalFfmpegPath) {
-        throw new Error("FFmpeg 바이너리를 찾을 수 없습니다.");
+      if (!tmpFile) {
+        throw new Error("트랙 다운로드에 실패했습니다.");
       }
+      this._currentTmpFile = tmpFile;
 
-      const ffmpeg = spawn(finalFfmpegPath, [
-        "-re", // 실시간 속도로 데이터 출력 (배속 방지 필수)
-        "-reconnect",
-        "1",
-        "-reconnect_streamed",
-        "1",
-        "-reconnect_on_network_error",
-        "1",
-        "-reconnect_delay_max",
-        "10",
-        "-reconnect_at_eof",
-        "1",
-        "-i",
-        streamUrl,
-        "-vn", // 비디오 스트림 무시
-        "-sn", // 자막 스트림 무시
-        "-dn", // 데이터 스트림 무시
-        "-analyzeduration",
-        "1000000", // 1초간 분석 (더 정확한 포맷 탐지)
-        "-probesize",
-        "1000000",
-        "-loglevel",
-        "info",
-        "-stats",
-        "-f",
-        "s16le",
-        "-ar",
-        "48000",
-        "-ac",
-        "2",
-        "-af",
-        "volume=0.5",
-        "pipe:1",
-      ]) as any;
-      this._ffmpegProcess = ffmpeg;
-
-      ffmpeg.on("close", (code: number) => {
-        // Broken pipe(코드 1)는 Discord 파이프가 먼저 닫힐 때 발생하는 정상 종료 신호
-        if (code !== 0 && code !== null && code !== 1) {
-          console.error(`[Audio:Error] FFmpeg 프로세스가 종료되었습니다. (종료 코드: ${code})`);
-        }
-      });
-
-      ffmpeg.stderr.on("data", (data: Buffer) => {
-        const line = data.toString();
-        // Broken pipe는 곡 종료/스킵 시 정상 발생 — 무시
-        if (line.includes("Broken pipe") || line.includes("Conversion failed")) return;
-        if (line.includes("Error") || line.includes("failed")) {
-          console.error(`[Audio:FFmpeg-Stderr] ${line.trim()}`);
-        }
-
-        // 비정상(speed < 1.0x) 시에만 경고 로그 출력
-        // 일시정지 상태일 때는 출력이 멈추므로 경고를 무시합니다.
-        if (
-          line.includes("speed=") &&
-          this.player.state.status !== AudioPlayerStatus.Paused
-        ) {
-          const speedMatch = line.match(/speed=\s*([0-9.]+)x/);
-          if (speedMatch && speedMatch[1]) {
-            const speed = parseFloat(speedMatch[1]);
-            if (!isNaN(speed) && speed < 0.95) {
-              console.warn(
-                `[Audio:Warning] 서버 성능 저하 감지 (${speed}x) - 버퍼링 가능성 높음`,
-              );
-            }
-          }
-        }
-      });
-
-      ffmpeg.stdout.on("error", () => {});
-      ffmpeg.stdout.on("pause", () => {
-        // console.log(
-        //   "[Audio:System] 스트림 출력 일시 정지 (디스코드 전송 완료 대기)",
-        // );
-      });
-      ffmpeg.stdout.on("resume", () => {
-        // console.log("[Audio:System] 스트림 출력 재개");
-      });
-
-      // ffmpeg stdout을 discordjs/voice AudioResource로 변환 (Raw PCM 타입 지정)
-      const resource = createAudioResource(ffmpeg.stdout as any, {
-        inputType: StreamType.Raw,
+      // WebmOpus는 Opus 타임스탬프 기반으로 discordjs/voice가 재생 속도를 직접 제어
+      const resource = createAudioResource(fs.createReadStream(tmpFile), {
+        inputType: StreamType.WebmOpus,
         inlineVolume: false,
       });
 
-      // 데이터 공급 지연(Underflow) 감지 훅
-      ffmpeg.stdout.on("end", () => {
-        console.log("[Audio:Event] 스트림 정상 종료");
-      });
-
-      // 안정적인 전송을 위한 입출력 버퍼 최적화
-      if ((ffmpeg.stdout as any)._readableState) {
-        (ffmpeg.stdout as any)._readableState.highWaterMark = 512 * 1024;
-      }
-
       this.player.play(resource);
-      console.log(
-        `[Audio:Event] '${track.title}' 재생 시작 (안정성 모니터링 활성화)`,
-      );
+      console.log(`[Audio:Event] '${track.title}' 재생 시작`);
       this.onTrackStart?.(track);
+
+      // 다음 곡 백그라운드 prefetch 시작 (재생 시작 직후)
+      this._prefetchNext();
     } catch (err) {
-      console.error("음악 재생 실패:", err);
-      // 실패 시 잠시 대기 후 다음 곡 시도 (무한 루프 방지)
-      setTimeout(() => this.playNext(), 1000);
+      console.error(`[Audio:Error] '${track.title}' 재생 실패:`, err);
+      this._currentTmpFile = null;
+      this.currentTrack = null;
+      if (this.tracks.length === 0) {
+        this.onQueueEnd?.();
+        this._startDisconnectTimer();
+        return;
+      }
+      // Idle 상태 그대로이므로 Idle 핸들러가 깨어나지 않음 — 직접 다음 곡으로
+      void this.playNext();
     }
   }
 }
@@ -576,7 +532,7 @@ export async function getYouTubePlaylist(
         "--skip-download",
         "--flat-playlist",
       ],
-      { maxBuffer: 1024 * 1024 * 50 }, // 매우 커질 수 있으므로 버퍼 증가 (50MB)
+      { maxBuffer: 1024 * 1024 * 50, timeout: 60000 }, // 50MB 버퍼, 60초 timeout
       (error, stdout, stderr) => {
         if (error) {
           console.error("YouTube 플레이리스트 추출 실패:", error.message);
@@ -832,6 +788,11 @@ export class VoiceManager {
       this.queues.set(guildId, queue);
     }
     return queue;
+  }
+
+  /** connection 없이 큐를 생성하지 않음 — 이벤트 핸들러용 존재 확인 */
+  public peekQueue(guildId: string): GuildQueue | undefined {
+    return this.queues.get(guildId);
   }
 
   public getAllQueues(): Map<string, GuildQueue> {

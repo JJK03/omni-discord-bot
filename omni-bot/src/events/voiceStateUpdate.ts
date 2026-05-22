@@ -5,10 +5,10 @@ export default {
   name: Events.VoiceStateUpdate,
   async execute(oldState: VoiceState, newState: VoiceState) {
     const guildId = oldState.guild.id;
-    const queue = globalVoiceManager.getQueue(guildId);
+    const queue = globalVoiceManager.peekQueue(guildId);
 
-    // 봇이 음성 채널에 연결되어 있지 않으면 무시
-    if (!queue.connection) return;
+    // 큐 자체가 없거나 연결되어 있지 않으면 무시 (getQueue 사용 시 빈 큐가 무한 생성됨)
+    if (!queue?.connection) return;
 
     // 만약 어떤 유저가 음성 채널을 이동/퇴장했다면
     if (oldState.channelId) {

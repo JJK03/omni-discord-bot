@@ -41,7 +41,7 @@ export async function handleCommandInteraction(interaction: ChatInputCommandInte
     try {
       const replyOptions = {
         content: "❌ 명령어 실행 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
-        ephemeral: true,
+        flags: ["Ephemeral"] as const,
       };
       if (interaction.replied || interaction.deferred) {
         await interaction.editReply(replyOptions);
