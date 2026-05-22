@@ -322,7 +322,8 @@ export class GuildQueue {
     this._stopDisconnectTimer();
     this.tracks.push(...newTracks);
     this.onQueueUpdate?.();
-    if (this.player.state.status === AudioPlayerStatus.Idle) {
+    // currentTrack이 없고 Idle일 때만 재생 시작 (백그라운드 배치 중복 트리거 방지)
+    if (!this.currentTrack && this.player.state.status === AudioPlayerStatus.Idle) {
       await this.playNext();
     }
   }
@@ -779,7 +780,7 @@ export async function resolveAppleMusicPlaylist(
     const ready = batchResults.filter((t): t is Track => t !== null);
     if (ready.length > 0) {
       allTracks.push(...ready);
-      onBatchReady?.(ready, isFirst);
+      if (onBatchReady) await onBatchReady(ready, isFirst);
       isFirst = false;
     }
   }
