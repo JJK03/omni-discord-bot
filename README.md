@@ -3,7 +3,7 @@
 # Omni
 High-performance, modular Discord bot — music streaming, server management, and community tools in one ecosystem.
 
-[![GitHub release](https://img.shields.io/github/v/release/jinsh1210/omni-discord-bot)](https://github.com/jinsh1210/omni-discord-bot/releases/latest)
+[![GitHub release](https://img.shields.io/github/v/release/jinsh1210/omni-discord-bot?cacheSeconds=0)](https://github.com/jinsh1210/omni-discord-bot/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Discord-5865F2)](https://github.com/jinsh1210/omni-discord-bot)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
