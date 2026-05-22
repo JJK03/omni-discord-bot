@@ -56,8 +56,8 @@ export class GuildQueue {
     this.guildId = guildId;
     this.player = createAudioPlayer({
       behaviors: {
-        // TLS 재연결 최대 10초 허용 (20ms × 500)
-        maxMissedFrames: 500,
+        // TLS 재연결 최대 15초 허용 (20ms × 750)
+        maxMissedFrames: 750,
       },
     });
 
@@ -384,6 +384,8 @@ export class GuildQueue {
         "-reconnect",
         "1",
         "-reconnect_streamed",
+        "1",
+        "-reconnect_on_network_error",
         "1",
         "-reconnect_delay_max",
         "10",
