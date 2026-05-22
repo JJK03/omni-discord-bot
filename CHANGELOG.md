@@ -1,3 +1,8 @@
+## [v1.1.1] - 2026-05-22
+
+### Documentation
+- docs: v1.1.0 CHANGELOG 상세 내역으로 정리
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
