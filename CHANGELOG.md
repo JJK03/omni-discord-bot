@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-05-24
+
+### Fixed
+- Stop button now cancels in-flight playlist enqueue: adding tracks mid-batch (Apple Music / YouTube playlist) is interrupted immediately when stop is pressed. Previously, batch additions continued even after the queue was destroyed.
+
 ## [1.1.2] - 2026-05-23
 
 ### Fixed
