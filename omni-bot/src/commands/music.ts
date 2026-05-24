@@ -75,16 +75,19 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
       );
 
       let repliedDeleted = false;
+      const signal = queue.abortController.signal;
       const playlistInfo = await resolveAppleMusicPlaylist(
         query,
         displayName,
         async (tracks, isFirst) => {
+          if (signal.aborted) return;
           await queue.enqueueMultiple(tracks);
           if (isFirst && !repliedDeleted) {
             repliedDeleted = true;
             await interaction.deleteReply().catch(() => {});
           }
         },
+        signal,
       );
 
       if (!playlistInfo || playlistInfo.tracks.length === 0) {
@@ -113,8 +116,9 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
         "⏳ 재생목록을 검색하고 있습니다... (곡 수에 따라 시간이 걸릴 수 있습니다)",
       );
 
-      const playlistInfo = await getYouTubePlaylist(query, displayName);
+      const playlistInfo = await getYouTubePlaylist(query, displayName, queue.abortController.signal);
 
+      if (queue.abortController.signal.aborted) return;
       if (!playlistInfo || playlistInfo.tracks.length === 0) {
         return interaction.editReply(
           "❌ 재생목록에서 트랙을 가져올 수 없습니다. 비공개 목록이거나 잘못된 주소일 수 있습니다.",
@@ -144,6 +148,7 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
         };
       }
 
+      if (queue.abortController.signal.aborted) return;
       await queue.enqueue(trackInfo);
       await interaction.deleteReply();
     }
