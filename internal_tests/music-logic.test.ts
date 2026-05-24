@@ -318,4 +318,102 @@ describe('Apple Music URL Resolution', () => {
       expect(isYouTubePlaylist).toBe(!isApple && isPlaylist);
     }
   });
+
+  it('resolveAppleMusicPlaylist: signal이 abort되면 배치 루프를 중단한다', async () => {
+    const pageData = {
+      data: [{
+        data: {
+          sections: [
+            { items: [{ title: 'Test Playlist' }] },
+            {
+              items: Array.from({ length: 10 }, (_, i) => ({
+                title: `Song ${i + 1}`,
+                artistName: `Artist ${i + 1}`,
+              })),
+            },
+          ],
+        },
+      }],
+    };
+
+    httpsGet.mockImplementation((_url: string, _opts: any, callback: (res: any) => void) => {
+      const chunks: ((chunk: Buffer) => void)[] = [];
+      const endHandlers: (() => void)[] = [];
+      const res = {
+        on: (event: string, handler: any) => {
+          if (event === 'data') chunks.push(handler);
+          if (event === 'end') endHandlers.push(handler);
+        },
+      };
+      callback(res);
+      chunks.forEach(h => h(Buffer.from(`<script>${JSON.stringify(pageData)}</script>`)));
+      endHandlers.forEach(h => h());
+      return { on: vi.fn() };
+    });
+
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: any, callback: any) => {
+      callback(null, JSON.stringify({ entries: [{ url: 'https://youtube.com/watch?v=x', title: 'Song' }] }), '');
+    });
+
+    const controller = new AbortController();
+    const onBatchReady = vi.fn(async () => {
+      // 첫 번째 배치 처리 후 abort
+      controller.abort();
+    });
+
+    await resolveAppleMusicPlaylist(
+      'https://music.apple.com/kr/playlist/test/pl.u-xxx',
+      '유저',
+      onBatchReady,
+      controller.signal,
+    );
+
+    // 10개 곡 / 배치 5개 = 2 배치이지만 첫 배치 후 abort → onBatchReady는 1번만 호출
+    expect(onBatchReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolveAppleMusicPlaylist: signal이 이미 abort된 상태면 onBatchReady를 호출하지 않는다', async () => {
+    const pageData = {
+      data: [{
+        data: {
+          sections: [
+            { items: [{ title: 'Test Playlist' }] },
+            { items: [{ title: 'Song 1', artistName: 'Artist 1' }] },
+          ],
+        },
+      }],
+    };
+
+    httpsGet.mockImplementation((_url: string, _opts: any, callback: (res: any) => void) => {
+      const chunks: ((chunk: Buffer) => void)[] = [];
+      const endHandlers: (() => void)[] = [];
+      const res = {
+        on: (event: string, handler: any) => {
+          if (event === 'data') chunks.push(handler);
+          if (event === 'end') endHandlers.push(handler);
+        },
+      };
+      callback(res);
+      chunks.forEach(h => h(Buffer.from(`<script>${JSON.stringify(pageData)}</script>`)));
+      endHandlers.forEach(h => h());
+      return { on: vi.fn() };
+    });
+
+    execFile.mockImplementation((_bin: string, _args: string[], _opts: any, callback: any) => {
+      callback(null, JSON.stringify({ entries: [{ url: 'https://youtube.com/watch?v=x', title: 'Song' }] }), '');
+    });
+
+    const controller = new AbortController();
+    controller.abort(); // 시작 전 이미 abort
+
+    const onBatchReady = vi.fn();
+    await resolveAppleMusicPlaylist(
+      'https://music.apple.com/kr/playlist/test/pl.u-xxx',
+      '유저',
+      onBatchReady,
+      controller.signal,
+    );
+
+    expect(onBatchReady).not.toHaveBeenCalled();
+  });
 });
