@@ -52,6 +52,8 @@ export class GuildQueue {
   public onQueueUpdate: (() => void) | null = null;
   // 봇 퇴장/정지 시 패널 삭제용 콜백
   public onDestroy: (() => void) | null = null;
+  // 진행 중인 enqueue 작업 취소용 (정지 버튼 누를 시 abort)
+  public abortController: AbortController = new AbortController();
 
   // 현재 실행 중인 자식 프로세스 참조 (스킵/정지 시 안전 정리용)
   private _ytdlpProcess: ReturnType<typeof spawn> | null = null;
@@ -310,6 +312,8 @@ export class GuildQueue {
    * 오디오 재생을 완전히 종료하고 커넥션을 초기화합니다.
    */
   public async destroy() {
+    // 진행 중인 배치 enqueue 작업을 즉시 취소
+    this.abortController.abort();
     this._stopDisconnectTimer();
     this.tracks = [];
     this.currentTrack = null;
@@ -507,8 +511,11 @@ export async function searchYouTube(
 export async function getYouTubePlaylist(
   playlistUrl: string,
   requestedBy: string,
+  signal?: AbortSignal,
 ): Promise<{ playlistTitle: string; tracks: Track[] } | null> {
+  if (signal?.aborted) return null;
   return new Promise((resolve) => {
+    signal?.addEventListener("abort", () => resolve(null), { once: true });
     // 안전한 웹 URL 여부 검증 (http/https로 시작하고 묶음 기호 등을 포함하지 않는지)
     try {
       const parsedUrl = new URL(playlistUrl);
@@ -532,7 +539,7 @@ export async function getYouTubePlaylist(
         "--skip-download",
         "--flat-playlist",
       ],
-      { maxBuffer: 1024 * 1024 * 50, timeout: 60000 }, // 50MB 버퍼, 60초 timeout
+      { maxBuffer: 1024 * 1024 * 50, timeout: 60000, signal }, // 50MB 버퍼, 60초 timeout
       (error, stdout, stderr) => {
         if (error) {
           console.error("YouTube 플레이리스트 추출 실패:", error.message);
@@ -642,6 +649,7 @@ export async function resolveAppleMusicPlaylist(
   appleUrl: string,
   requestedBy: string,
   onBatchReady?: (tracks: Track[], isFirst: boolean) => void,
+  signal?: AbortSignal,
 ): Promise<{ playlistTitle: string; tracks: Track[] } | null> {
   // URL 기본 검증
   try {
@@ -728,6 +736,8 @@ export async function resolveAppleMusicPlaylist(
   let isFirst = true;
 
   for (let i = 0; i < rawItems.length; i += BATCH_SIZE) {
+    if (signal?.aborted) break;
+
     const batch = rawItems.slice(i, i + BATCH_SIZE);
     const batchResults: (Track | null)[] = new Array(batch.length).fill(null);
 
@@ -752,6 +762,8 @@ export async function resolveAppleMusicPlaylist(
     const ready = batchResults.filter((t): t is Track => t !== null);
     if (ready.length > 0) {
       allTracks.push(...ready);
+      // 배치 검색이 끝나는 사이 정지가 눌릴 수 있으므로 재확인
+      if (signal?.aborted) break;
       try {
         if (onBatchReady) await onBatchReady(ready, isFirst);
       } catch (err) {
