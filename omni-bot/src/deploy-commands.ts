@@ -13,11 +13,21 @@ const commands = [
   new SlashCommandBuilder()
     .setName("노래")
     .setDescription("음성 채널에서 유튜브 음악을 재생합니다. (버튼으로 제어)")
-    .addStringOption((option) =>
-      option
-        .setName("검색어")
-        .setDescription("유튜브 링크 또는 검색어")
-        .setRequired(true),
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("신청")
+        .setDescription("유튜브 링크 또는 검색어로 노래를 신청합니다.")
+        .addStringOption((option) =>
+          option
+            .setName("검색어")
+            .setDescription("유튜브 링크 또는 검색어")
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("채널설정")
+        .setDescription("현재 채널을 노래 신청 전용 채널로 설정합니다. (/노래 없이 신청 가능)"),
     ),
 
   // ────────── 서버 관리 (omni) ──────────
