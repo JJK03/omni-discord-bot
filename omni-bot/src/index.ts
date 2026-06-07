@@ -33,6 +33,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ─────────────────────────────────────────
+// Client Initialization / 클라이언트 초기화
+// ─────────────────────────────────────────
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+  ],
+  partials: [Partials.GuildMember, Partials.User, Partials.Message],
+}) as Client & { commands: Collection<string, any> };
+
+client.commands = new Collection();
+
+// ─────────────────────────────────────────
 // omni: 만료 닉네임/채널 정리
 // ─────────────────────────────────────────
 async function checkAndRestoreExpiredNicknames() {
