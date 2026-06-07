@@ -1,12 +1,50 @@
-import { Events, Message, TextChannel } from "discord.js";
+import { Events, Message, TextChannel, GuildMember } from "discord.js";
 import emojiRegex from "emoji-regex";
+import { getGuildFeatures } from "../index.js";
+import { handleMusicRequest } from "../commands/music.js";
 
 export default {
   name: Events.MessageCreate,
   async execute(message: Message) {
     if (message.author.bot) return;
+    if (!message.guild) return;
 
+    const guildId = message.guild.id;
+    const features = getGuildFeatures(guildId);
     const content = message.content.trim();
+
+    // 노래 신청 전용 채널 처리
+    if (features.music && features.musicChannelId === message.channelId && content) {
+      const member = message.member as GuildMember;
+      const voiceChannel = member.voice.channel;
+
+      if (!voiceChannel) {
+        const reply = await message.reply("🔇 먼저 음성 채널에 접속해야 합니다.");
+        setTimeout(() => reply.delete().catch(() => {}), 5000);
+        await message.delete().catch(() => {});
+        return;
+      }
+
+      // 노래 신청 로직 실행
+      await handleMusicRequest(
+        message.guild,
+        voiceChannel,
+        message.channel as TextChannel,
+        content,
+        member.displayName,
+        {
+          reply: async (msg) => {
+            const r = await message.reply(msg);
+            setTimeout(() => r.delete().catch(() => {}), 10000);
+            return r;
+          }
+        }
+      );
+
+      // 보낸 메시지 삭제 (신청 전용 채널을 깔끔하게 유지)
+      await message.delete().catch(() => {});
+      return;
+    }
 
     // 1) 커스텀 이모지 감지 정규식 (<:name:id> 또는 <a:name:id>)
     const customEmojiRegex = /^<a?:([^:]+):(\d+)>$/i;

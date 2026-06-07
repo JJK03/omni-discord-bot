@@ -58,6 +58,7 @@ interface BotFeatures {
   tempNickname: boolean;
   music: boolean;
   anonymousChat: boolean;
+  musicChannelId?: string;
 }
 
 const DEFAULT_FEATURES: BotFeatures = {
@@ -98,6 +99,7 @@ function listenToBotSettings(guildId: string) {
           clean: data["clean"] ?? true,
           music: data["music"] ?? true,
           anonymousChat: data["anonymousChat"] ?? true,
+          musicChannelId: data["musicChannelId"],
         });
       } else {
         createFeatureDocIfMissing(guildId, DEFAULT_FEATURES);
