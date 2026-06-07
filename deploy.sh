@@ -22,7 +22,10 @@ docker rm omni-bot >/dev/null 2>&1 || true
 echo "3. 새 컨테이너 실행 중..."
 docker run -d --name omni-bot --net=host --env-file .env omni-bot:latest
 
-echo "4. 불필요한 빌드 부산물 정리 중..."
+echo "4. 슬래시 커맨드 등록 중..."
+npm run deploy-commands
+
+echo "5. 불필요한 빌드 부산물 정리 중..."
 docker image prune -f >/dev/null 2>&1
 
 echo ""

@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
 import { db } from "../firebase.js";
 import { FieldValue } from "firebase-admin/firestore";
-import { getGuildFeatures } from "../index.js";
+import { getGuildFeatures } from "../guildState.js";
 import { logBotAction } from "../logBotAction.js";
 import { ERROR_MESSAGES } from "../constants.js";
 
