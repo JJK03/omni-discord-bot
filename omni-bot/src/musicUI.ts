@@ -216,6 +216,13 @@ export async function handleMusicButton(
 
   if (interaction.replied || interaction.deferred) return;
 
+  // 음성 채널 입장 체크
+  const member = interaction.member as import("discord.js").GuildMember | null;
+  if (!member?.voice?.channel) {
+    await interaction.reply({ content: "🔇 음성 채널에 입장한 상태에서만 버튼을 사용할 수 있습니다.", flags: ["Ephemeral"] });
+    return;
+  }
+
   const safeDefer = async () => {
     try {
       await interaction.deferUpdate();

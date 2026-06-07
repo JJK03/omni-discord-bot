@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-06-07
+
+### Added
+- Dedicated music channel system: `/노래 채널설정` now sends a pinned announcement embed to the configured channel explaining how to use it.
+- Announcement embed is automatically deleted and re-created when the music channel is changed.
+- `/노래 신청` now routes the music panel to the configured dedicated channel regardless of which channel the command was run from.
+- `/노래 신청` without a configured channel returns an ephemeral prompt to set one first via `/노래 채널설정`.
+- Music control buttons now require the user to be in a voice channel; clicking while outside returns an ephemeral error.
+- Firestore stores `musicAnnouncementMessageId` alongside `musicChannelId` for embed lifecycle management.
+
+### Fixed
+- Restored `__dirname` definition and `Client` initialization block accidentally removed during PR #43 merge.
+- Updated `getGuildFeatures` import path in all command files to point to `guildState.ts` after the circular-dependency refactor.
+
 ## [1.1.3] - 2026-05-24
 
 ### Fixed

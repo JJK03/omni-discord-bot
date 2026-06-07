@@ -23,6 +23,8 @@ jobs:
       - name: Install bot dependencies
         working-directory: omni-bot
         run: npm ci
+        env:
+          YOUTUBE_DL_SKIP_DOWNLOAD: true
 
       - name: Run regression tests
         run: npm test -- --reporter=verbose
