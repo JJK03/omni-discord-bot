@@ -1,5 +1,5 @@
 import { ChatInputCommandInteraction, PermissionFlagsBits } from "discord.js";
-import { getGuildFeatures } from "../index.js";
+import { getGuildFeatures } from "../guildState.js";
 import { logBotAction } from "../logBotAction.js";
 import { ERROR_MESSAGES } from "../constants.js";
 

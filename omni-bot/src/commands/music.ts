@@ -5,6 +5,7 @@ import {
   Guild,
   VoiceBasedChannel,
   PermissionsBitField,
+  EmbedBuilder,
 } from "discord.js";
 import { getGuildFeatures } from "../guildState.js";
 import { globalVoiceManager } from "../voiceManager.js";
@@ -172,7 +173,6 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "채널설정") {
-    // 권한 체크: 채널 관리 권한이 필요함
     if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageChannels)) {
       return interaction.reply({
         content: "❌ 채널 설정을 변경할 권한(채널 관리)이 없습니다.",
@@ -180,16 +180,60 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
       });
     }
 
-    const channel = interaction.channel as TextChannel;
+    const newChannel = interaction.channel as TextChannel;
+    const featuresRef = db.collection(COLLECTIONS.GUILDS)
+      .doc(guildId)
+      .collection(COLLECTIONS.BOT_SETTINGS)
+      .doc(COLLECTIONS.FEATURES);
+
     try {
-      await db.collection(COLLECTIONS.GUILDS)
-        .doc(guildId)
-        .collection(COLLECTIONS.BOT_SETTINGS)
-        .doc(COLLECTIONS.FEATURES)
-        .update({ musicChannelId: channel.id });
-      
+      // 기존 채널/안내 메시지 정보를 update 전에 읽기
+      const prevFeatures = getGuildFeatures(guildId);
+      const prevChannelId = prevFeatures.musicChannelId;
+      const prevMsgId = prevFeatures.musicAnnouncementMessageId;
+
+      // 이전 안내 메시지 삭제 (채널이 바뀌거나 메시지가 있을 때)
+      if (prevChannelId && prevMsgId) {
+        try {
+          const prevChannel = await interaction.client.channels.fetch(prevChannelId).catch(() => null) as TextChannel | null;
+          if (prevChannel) {
+            const prevMsg = await prevChannel.messages.fetch(prevMsgId).catch(() => null);
+            if (prevMsg) await prevMsg.delete().catch(() => {});
+          }
+        } catch {
+          // 채널이나 메시지가 이미 없어도 계속 진행
+        }
+      }
+
+      // 새 채널에 안내 임베드 전송
+      const announceEmbed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle("🎵 노래 신청 전용 채널")
+        .setDescription(
+          "이 채널은 노래 신청 전용 채널입니다.\n\n" +
+          "**사용 방법**\n" +
+          "• 노래 제목 또는 YouTube/Apple Music URL을 채팅에 입력\n" +
+          "• `/노래 신청` 명령어로도 신청 가능\n\n" +
+          "**주의사항**\n" +
+          "• 음성 채널에 입장한 상태에서 신청해야 합니다\n" +
+          "• 신청 메시지는 자동으로 삭제됩니다"
+        )
+        .setFooter({ text: "omni-bot • 노래 신청 채널" })
+        .setTimestamp();
+
+      const announceMsgResult = await newChannel.send({ embeds: [announceEmbed] });
+
+      // 핀 시도 (봇 권한 부족 시 임베드는 유지하되 핀만 스킵)
+      await announceMsgResult.pin().catch(() => {});
+
+      // Firestore 업데이트
+      await featuresRef.update({
+        musicChannelId: newChannel.id,
+        musicAnnouncementMessageId: announceMsgResult.id,
+      });
+
       return interaction.reply({
-        content: `✅ 이 채널(<#${channel.id}>)이 노래 신청 전용 채널로 설정되었습니다. 이제 "/노래" 없이 노래 제목이나 URL만 입력해도 신청됩니다.`,
+        content: `✅ <#${newChannel.id}> 채널이 노래 신청 전용 채널로 설정되었습니다.`,
         flags: ["Ephemeral"],
       });
     } catch (error) {
@@ -202,6 +246,13 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
   }
 
   // '신청' 서브커맨드 처리
+  if (!features.musicChannelId) {
+    return interaction.reply({
+      content: "❌ 먼저 `/노래 채널설정`으로 노래 신청 전용 채널을 지정해주세요.",
+      flags: ["Ephemeral"],
+    });
+  }
+
   const query = interaction.options.getString("검색어", true);
   const member = interaction.member as GuildMember;
   const voiceChannel = member.voice.channel;
@@ -224,10 +275,16 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild;
   if (!guild) return;
 
+  // 설정된 전용 채널로 패널 전송 (명령어를 어느 채널에서 보내든 관계없이)
+  const musicChannel = await interaction.client.channels.fetch(features.musicChannelId).catch(() => null) as TextChannel | null;
+  if (!musicChannel) {
+    return interaction.editReply("❌ 설정된 노래 채널을 찾을 수 없습니다. `/노래 채널설정`으로 다시 지정해주세요.");
+  }
+
   await handleMusicRequest(
     guild,
     voiceChannel,
-    interaction.channel as TextChannel,
+    musicChannel,
     query,
     member.displayName,
     {

@@ -5,7 +5,7 @@ import {
   TextInputStyle,
   ActionRowBuilder,
 } from "discord.js";
-import { getGuildFeatures } from "../index.js";
+import { getGuildFeatures } from "../guildState.js";
 
 export async function executeAnonymous(
   interaction: ChatInputCommandInteraction,

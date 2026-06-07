@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { db } from "../firebase.js";
 import { FieldValue } from "firebase-admin/firestore";
-import { getGuildFeatures } from "../index.js";
+import { getGuildFeatures } from "../guildState.js";
 import { COLLECTIONS, ERROR_MESSAGES } from "../constants.js";
 
 export async function executeTempChannel(
