@@ -4,9 +4,9 @@ import {
   GuildMember,
   Guild,
   VoiceBasedChannel,
-  Message,
+  PermissionsBitField,
 } from "discord.js";
-import { getGuildFeatures } from "../index.js";
+import { getGuildFeatures } from "../guildState.js";
 import { globalVoiceManager } from "../voiceManager.js";
 import { searchYouTube, getYouTubePlaylist, resolveAppleMusicTrack, resolveAppleMusicPlaylist } from "../voiceManager.js";
 import { sendOrUpdateMusicPanel, deleteMusicPanel } from "../musicUI.js";
@@ -25,7 +25,7 @@ export async function handleMusicRequest(
     deleteReply?: () => Promise<any>;
     followUp?: (content: string) => Promise<any>;
   }
-) {
+): Promise<boolean> {
   try {
     const queue = globalVoiceManager.getQueue(guild.id);
 
@@ -77,13 +77,14 @@ export async function handleMusicRequest(
       if (!playlistInfo || playlistInfo.tracks.length === 0) {
         if (!repliedDeleted) {
           const msg = "❌ Apple Music 플레이리스트를 가져올 수 없습니다. 비공개 목록이거나 잘못된 주소일 수 있습니다.";
-          if (feedback.editReply) return feedback.editReply(msg);
-          if (feedback.reply) return feedback.reply(msg);
+          if (feedback.editReply) await feedback.editReply(msg);
+          else if (feedback.reply) await feedback.reply(msg);
         }
-        return;
+        return false;
       }
 
       if (!repliedDeleted && feedback.deleteReply) await feedback.deleteReply().catch(() => {});
+      return true;
     } else if (isAppleMusic) {
       const msgWait = "⏳ Apple Music에서 곡 정보를 가져오는 중입니다...";
       if (feedback.editReply) await feedback.editReply(msgWait);
@@ -93,13 +94,14 @@ export async function handleMusicRequest(
 
       if (!trackInfo) {
         const msgErr = "❌ Apple Music 링크에서 곡을 찾을 수 없습니다.";
-        if (feedback.editReply) return feedback.editReply(msgErr);
-        if (feedback.reply) return feedback.reply(msgErr);
-        return;
+        if (feedback.editReply) await feedback.editReply(msgErr);
+        else if (feedback.reply) await feedback.reply(msgErr);
+        return false;
       }
 
       await queue.enqueue(trackInfo);
       if (feedback.deleteReply) await feedback.deleteReply().catch(() => {});
+      return true;
     } else if (isYouTubePlaylist) {
       const msgWait = "⏳ 재생목록을 검색하고 있습니다... (곡 수에 따라 시간이 걸릴 수 있습니다)";
       if (feedback.editReply) await feedback.editReply(msgWait);
@@ -107,16 +109,17 @@ export async function handleMusicRequest(
 
       const playlistInfo = await getYouTubePlaylist(query, userDisplayName, queue.abortController.signal);
 
-      if (queue.abortController.signal.aborted) return;
+      if (queue.abortController.signal.aborted) return false;
       if (!playlistInfo || playlistInfo.tracks.length === 0) {
         const msgErr = "❌ 재생목록에서 트랙을 가져올 수 없습니다. 비공개 목록이거나 잘못된 주소일 수 있습니다.";
-        if (feedback.editReply) return feedback.editReply(msgErr);
-        if (feedback.reply) return feedback.reply(msgErr);
-        return;
+        if (feedback.editReply) await feedback.editReply(msgErr);
+        else if (feedback.reply) await feedback.reply(msgErr);
+        return false;
       }
 
       await queue.enqueueMultiple(playlistInfo.tracks);
       if (feedback.deleteReply) await feedback.deleteReply().catch(() => {});
+      return true;
     } else {
       let trackInfo: { title: string; url: string; requestedBy: string };
 
@@ -130,9 +133,9 @@ export async function handleMusicRequest(
         const searchResult = await searchYouTube(query);
         if (!searchResult) {
           const msgErr = "🔍 노래를 찾을 수 없습니다.";
-          if (feedback.editReply) return feedback.editReply(msgErr);
-          if (feedback.reply) return feedback.reply(msgErr);
-          return;
+          if (feedback.editReply) await feedback.editReply(msgErr);
+          else if (feedback.reply) await feedback.reply(msgErr);
+          return false;
         }
         trackInfo = {
           title: searchResult.title,
@@ -141,15 +144,17 @@ export async function handleMusicRequest(
         };
       }
 
-      if (queue.abortController.signal.aborted) return;
+      if (queue.abortController.signal.aborted) return false;
       await queue.enqueue(trackInfo);
       if (feedback.deleteReply) await feedback.deleteReply().catch(() => {});
+      return true;
     }
   } catch (err) {
     console.error("음악 재생 실패:", err);
     const msgErr = "노래를 가져오는 중 오류가 발생했습니다.";
     if (feedback.editReply) await feedback.editReply(msgErr);
     else if (feedback.reply) await feedback.reply(msgErr);
+    return false;
   }
 }
 
@@ -167,6 +172,14 @@ export async function executeMusic(interaction: ChatInputCommandInteraction) {
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "채널설정") {
+    // 권한 체크: 채널 관리 권한이 필요함
+    if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageChannels)) {
+      return interaction.reply({
+        content: "❌ 채널 설정을 변경할 권한(채널 관리)이 없습니다.",
+        flags: ["Ephemeral"],
+      });
+    }
+
     const channel = interaction.channel as TextChannel;
     try {
       await db.collection(COLLECTIONS.GUILDS)

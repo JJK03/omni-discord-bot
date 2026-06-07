@@ -1,6 +1,6 @@
 import { Events, Message, TextChannel, GuildMember } from "discord.js";
 import emojiRegex from "emoji-regex";
-import { getGuildFeatures } from "../index.js";
+import { getGuildFeatures } from "../guildState.js";
 import { handleMusicRequest } from "../commands/music.js";
 
 export default {
@@ -21,12 +21,13 @@ export default {
       if (!voiceChannel) {
         const reply = await message.reply("🔇 먼저 음성 채널에 접속해야 합니다.");
         setTimeout(() => reply.delete().catch(() => {}), 5000);
+        // 채널 유지를 위해 잘못된 입력도 일단 삭제할지 고민되지만, 피드백을 위해 남겨두거나 명확히 삭제
         await message.delete().catch(() => {});
         return;
       }
 
       // 노래 신청 로직 실행
-      await handleMusicRequest(
+      const success = await handleMusicRequest(
         message.guild,
         voiceChannel,
         message.channel as TextChannel,
@@ -41,8 +42,10 @@ export default {
         }
       );
 
-      // 보낸 메시지 삭제 (신청 전용 채널을 깔끔하게 유지)
-      await message.delete().catch(() => {});
+      // 보낸 메시지 삭제 (신청 성공 시에만 채널을 깔끔하게 유지)
+      if (success) {
+        await message.delete().catch(() => {});
+      }
       return;
     }
 

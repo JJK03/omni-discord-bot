@@ -25,90 +25,9 @@ export { globalVoiceManager };
 import { handleButtonInteraction } from "./interactions/buttonHandler.js";
 import { handleModalInteraction } from "./interactions/modalHandler.js";
 import { handleCommandInteraction } from "./interactions/commandHandler.js";
+import { listenToBotSettings, stopListeningToBotSettings, clearAllSettingsListeners } from "./guildState.js";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ─────────────────────────────────────────
-// Client Initialization / 클라이언트 초기화
-// ─────────────────────────────────────────
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-  ],
-  partials: [Partials.GuildMember, Partials.User, Partials.Message],
-}) as Client & { commands: Collection<string, any> };
-
-client.commands = new Collection();
-
-// ─────────────────────────────────────────
-// Bot Feature Configurations / 봇 서버별 기능 설정
-// ─────────────────────────────────────────
-interface BotFeatures {
-  kick: boolean;
-  ban: boolean;
-  clean: boolean;
-  tempChannel: boolean;
-  tempNickname: boolean;
-  music: boolean;
-  anonymousChat: boolean;
-  musicChannelId?: string;
-}
-
-const DEFAULT_FEATURES: BotFeatures = {
-  kick: true,
-  ban: true,
-  clean: true,
-  tempChannel: true,
-  tempNickname: true,
-  music: true,
-  anonymousChat: true,
-};
-
-const guildFeaturesMap = new Map<string, BotFeatures>();
-const settingsUnsubMap = new Map<string, () => void>();
-
-export function getGuildFeatures(guildId: string): BotFeatures {
-  return guildFeaturesMap.get(guildId) ?? { ...DEFAULT_FEATURES };
-}
-
-function listenToBotSettings(guildId: string) {
-  // 기존 리스너가 있다면 먼저 해제
-  if (settingsUnsubMap.has(guildId)) {
-    settingsUnsubMap.get(guildId)!();
-  }
-
-  const unsub = db.collection(COLLECTIONS.GUILDS)
-    .doc(guildId)
-    .collection(COLLECTIONS.BOT_SETTINGS)
-    .doc(COLLECTIONS.FEATURES)
-    .onSnapshot((docSnap) => {
-      if (docSnap.exists) {
-        const data = docSnap.data()!;
-        guildFeaturesMap.set(guildId, {
-          tempChannel: data["tempChannel"] ?? true,
-          tempNickname: data["tempNickname"] ?? true,
-          kick: data["kick"] ?? true,
-          ban: data["ban"] ?? true,
-          clean: data["clean"] ?? true,
-          music: data["music"] ?? true,
-          anonymousChat: data["anonymousChat"] ?? true,
-          musicChannelId: data["musicChannelId"],
-        });
-      } else {
-        createFeatureDocIfMissing(guildId, DEFAULT_FEATURES);
-        guildFeaturesMap.set(guildId, { ...DEFAULT_FEATURES });
-      }
-    });
-
-  settingsUnsubMap.set(guildId, unsub);
-}
 
 // ─────────────────────────────────────────
 // omni: 만료 닉네임/채널 정리
@@ -242,12 +161,7 @@ client.on(Events.GuildCreate, async (guild) => {
 
 client.on(Events.GuildDelete, (guild) => {
   console.log(`[GuildDelete] 서버 퇴장: ${guild.name} (${guild.id})`);
-  const unsub = settingsUnsubMap.get(guild.id);
-  if (unsub) {
-    unsub();
-    settingsUnsubMap.delete(guild.id);
-  }
-  guildFeaturesMap.delete(guild.id);
+  stopListeningToBotSettings(guild.id);
   import("./musicUI.js").then(({ clearMusicPanelState }) => clearMusicPanelState(guild.id)).catch(() => {});
 });
 
@@ -312,8 +226,7 @@ async function gracefulShutdown(signal: string) {
   }
 
   // 2. 리스너 해제
-  settingsUnsubMap.forEach((unsub) => unsub());
-  settingsUnsubMap.clear();
+  clearAllSettingsListeners();
 
   // 3. 디스코드 클라이언트 종료
   console.log("[Shutdown] Discord API 연결 해제 중...");
