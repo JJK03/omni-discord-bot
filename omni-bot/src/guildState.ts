@@ -11,6 +11,7 @@ export interface BotFeatures {
   music: boolean;
   anonymousChat: boolean;
   musicChannelId?: string;
+  musicAnnouncementMessageId?: string;
 }
 
 export const DEFAULT_FEATURES: BotFeatures = {
@@ -52,6 +53,7 @@ export function listenToBotSettings(guildId: string) {
           music: data["music"] ?? true,
           anonymousChat: data["anonymousChat"] ?? true,
           musicChannelId: data["musicChannelId"],
+          musicAnnouncementMessageId: data["musicAnnouncementMessageId"],
         });
       } else {
         createFeatureDocIfMissing(guildId, DEFAULT_FEATURES);
