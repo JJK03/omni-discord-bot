@@ -29,6 +29,9 @@ import { listenToBotSettings, stopListeningToBotSettings, clearAllSettingsListen
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // ─────────────────────────────────────────
 // omni: 만료 닉네임/채널 정리
 // ─────────────────────────────────────────
